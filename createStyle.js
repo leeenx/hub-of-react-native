@@ -61,6 +61,8 @@ function mountStaticProps () {
     screenWidth,
     screenHeight,
     statusBarHeight,
+    absoluteFill: StyleSheet.absoluteFill,
+    absoluteFillObject: StyleSheet.absoluteFillObject,
     orientation: getOrientation()
   }
   for (const key in props) {
