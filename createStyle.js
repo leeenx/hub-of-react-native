@@ -43,6 +43,32 @@ function generateStyle ({ css = {}, styles }) {
   return css
 }
 
+function fourValue (top = 0, right = top, bottom = top, left = right) {
+  return [top, right, bottom, left]
+}
+
+// 处理 margin
+function margin (...arg) {
+  const [top, right, bottom, left] = fourValue(...arg)
+  return {
+    marginTop: top,
+    marginRight: right,
+    marginBottom: bottom,
+    marginLeft: left
+  }
+}
+
+// 处理 padding
+function padding (...arg) {
+  const [top, right, bottom, left] = fourValue(...arg)
+  return {
+    paddingTop: top,
+    paddingRight: right,
+    paddingBottom: bottom,
+    paddingLeft: left
+  }
+}
+
 // 挂载静态属性
 function mountStaticProps () {
   // 设置状态栏高度
@@ -56,6 +82,8 @@ function mountStaticProps () {
     height: screenHeight
   } = Dimensions.get('screen')
   const props = {
+    padding,
+    margin,
     width,
     height,
     screenWidth,
