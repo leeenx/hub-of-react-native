@@ -1,5 +1,5 @@
 /**
- * @author leeenx
+ * @author lienxin
  * @description 创建样式的统一方法
  */
 
@@ -43,8 +43,8 @@ function generateStyle ({ css = {}, styles }) {
   return css
 }
 
-function fourValue (top = 0, right = top, bottom = top, left = right) {
-  return [top, right, bottom, left]
+function fourValue (one = 0, two = one, three = one, four = two) {
+  return [one, two, three, four]
 }
 
 // 处理 margin
@@ -66,6 +66,57 @@ function padding (...arg) {
     paddingRight: right,
     paddingBottom: bottom,
     paddingLeft: left
+  }
+}
+
+// 处理阴影
+function shadow (...arg) {
+  let [offsetX, offsetY, radius, color] = [0, 0, 0, 'rgba(0, 0, 5, 0.5)']
+  switch (arg.length) {
+    case 2:
+      [offsetX, offsetY] = arg
+      break
+    case 3:
+      [offsetX, offsetY, color] = arg
+    case 4:
+    default:
+      [offsetX, offsetY, radius, color] = arg
+  }
+  return {
+    offset: {
+      height: offsetY,
+      width: offsetX
+    },
+    color,
+    radius
+  }
+
+// 处理 boxShadow
+function boxShadow (...arg) {
+  const {
+    offset,
+    color,
+    radius
+  } = shadow(...arg)
+  return {
+    shadowOffset: offset,
+    shadowColor: color,
+    shadowRadius: radius,
+    shadowOpacity: 1
+  }
+}
+
+// 处理 textShadow
+function textShadow (...arg) {
+  const {
+    offset,
+    color,
+    radius
+  } = shadow(...arg)
+  return {
+    textShadowOffset: offset,
+    textShadowColor: color,
+    textShadowRadius: radius
   }
 }
 
@@ -91,7 +142,9 @@ function mountStaticProps () {
     statusBarHeight,
     absoluteFill: StyleSheet.absoluteFill,
     absoluteFillObject: StyleSheet.absoluteFillObject,
-    orientation: getOrientation()
+    orientation: getOrientation(),
+    boxShadow,
+    textShadow
   }
   for (const key in props) {
     createStyle[key] = props[key]
