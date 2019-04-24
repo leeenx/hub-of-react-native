@@ -1,5 +1,5 @@
 /**
- * @author lienxin
+ * @author leeenx
  * @description 创建样式的统一方法
  */
 
@@ -90,6 +90,7 @@ function shadow (...arg) {
     color,
     radius
   }
+}
 
 // 处理 boxShadow
 function boxShadow (...arg) {
