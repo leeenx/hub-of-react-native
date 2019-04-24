@@ -1,5 +1,5 @@
 /**
- * @author leeenx
+ * @author lienxin
  * @description 创建样式的统一方法
  */
 
@@ -32,14 +32,26 @@ function getOrientation () {
 
 // 生成样式
 function generateStyle ({ css = {}, styles }) {
-  Object.assign(
-    css,
-    StyleSheet.create(
-      typeof styles !== 'function' ?
-      styles :
-      styles()
+  styles = typeof styles !== 'function' ? styles : styles()
+  if (styles instanceof Array) {
+    // 数组
+    styles.forEach(item => {
+      const name = item.name
+      css[name] = css[name] || {}
+      generateStyle({
+        css: css[name],
+        styles: item
+      })
+    })
+  } else {
+    const newStyles = Object.assign({}, styles)
+    // 剔除 name
+    delete newStyles.name
+    Object.assign(
+      css,
+      StyleSheet.create(newStyles)
     )
-  )
+  }
   return css
 }
 
