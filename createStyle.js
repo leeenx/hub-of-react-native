@@ -270,7 +270,13 @@ function mountStaticProps () {
     width: screenWidth,
     height: screenHeight
   } = Dimensions.get('screen')
+  const {
+    hairlineWidth,
+    absoluteFill,
+    absoluteFillObject
+  } = StyleSheet
   const props = {
+    hairlineWidth,
     padding,
     margin,
     width,
@@ -278,8 +284,8 @@ function mountStaticProps () {
     screenWidth,
     screenHeight,
     statusBarHeight,
-    absoluteFill: StyleSheet.absoluteFill,
-    absoluteFillObject: StyleSheet.absoluteFillObject,
+    absoluteFill: absoluteFill,
+    absoluteFillObject: absoluteFillObject,
     orientation: getOrientation(),
     boxShadow,
     textShadow,
