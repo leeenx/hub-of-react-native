@@ -36,17 +36,31 @@ function generateStyle ({ css = {}, styles }) {
   if (styles instanceof Array) {
     // 数组
     styles.forEach(item => {
-      const name = item.name
-      css[name] = css[name] || {}
+      // 如果没有 layout 项，表示它是一个公共样式
+      const layout = item.layout || 'common'
+      css[layout] = css[layout] || {}
       generateStyle({
-        css: css[name],
+        css: css[layout],
         styles: item
       })
     })
+    // 将公共样式合并到其它 layout 中
+    const common = css['common']
+    if (common !== undefined) {
+      for (const layout in css) {
+        if (layout === 'common') continue
+        const curretLayout = css[layout]
+        Object.assign(
+          curretLayout,
+          common,
+          curretLayout
+        )
+      }
+    }
   } else {
     const newStyles = Object.assign({}, styles)
-    // 剔除 name
-    delete newStyles.name
+    // 剔除 layout
+    delete newStyles.layout
     Object.assign(
       css,
       StyleSheet.create(newStyles)
