@@ -133,6 +133,99 @@ function textShadow (...arg) {
   }
 }
 
+// rgb转hex函数
+function rgb2Hex(red, green, blue) {
+  return `#${hex(red)}${hex(green)}${hex(blue)}`
+}
+
+// 将 hex 转成 [r, g, b]
+function getRGBFromHex (hex) {
+  hex = hex.replace('#', '')
+  const rgb = []
+  const count = hex.length
+  const step = count === 3 ? 1 : 2
+  for (let i = 0; i < count; i += step) {
+    const base10 = Number(`0x${hex.substr(i, step)}`).toString(10)
+    rgb.push(base10)
+  }
+  return rgb
+}
+
+// 将 hex 转成 [r, g, b, a]
+function getRGBAFromHex (hex) {
+  const count = hex.length
+  const step = count === 5 ? 1 : 2
+  const alphaHex = Number(`0x${hex.substr(count - step, step)}`)
+  const alpha = alphaHex / 255
+  const [
+    red,
+    green,
+    blue
+  ] = getRGBFromHex(hex.substr(0, count - step))
+  return [red, green, blue, alpha]
+}
+
+// 转16进制
+function hex (base10) {
+  const base16 = base10.toString(16)
+  const len = base16.length
+  if (len === 1) return `0${base16}`
+  return base16
+}
+
+// rgb 颜色函数
+function rgb (...arg) {
+  const count = arg.length
+  if (
+    count === 1 &&
+    typeof arg[0] === 'string' &&
+    (arg[0].length === 3 || arg[0].length === 6) &&
+    arg[0] === '#'
+  ) {
+    // 转入的是 hex 值
+    return rgba(arg[0], 1)
+  } else if (count === 3) {
+    return rgba(...arg, 1)
+  }
+  // 异常
+  throw `function rgb expect 1 or 3 arguments, but ${count} argument(s) supply`
+}
+
+// rgba 颜色函数
+function rgba (...arg) {
+  const count = arg.length
+  if (
+    count === 2 &&
+    typeof arg[0] === 'string' &&
+    (arg[0].length === 4 || arg[0].length === 7) &&
+    arg[0][0] === '#' &
+    typeof arg[1] === 'number'
+  ) {
+    const alpha = arg[1]
+    const [
+      red,
+      green,
+      blue
+    ] = getRGBFromHex(arg[0])
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+  } else if (count === 4) {
+    if (
+      arg.every(item => typeof item === 'number')
+    ) {
+      const [
+        red,
+        green,
+        blue,
+        alpha
+      ] = arg
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+    }
+    throw `please make sure every argument is a number`
+  }
+  // 异常
+  throw `function rgba expect 2 or 4 arguments, but ${count} argument(s) supply`
+}
+
 // 挂载静态属性
 function mountStaticProps () {
   // 设置状态栏高度
@@ -157,7 +250,9 @@ function mountStaticProps () {
     absoluteFillObject: StyleSheet.absoluteFillObject,
     orientation: getOrientation(),
     boxShadow,
-    textShadow
+    textShadow,
+    rgb,
+    rgba,
   }
   for (const key in props) {
     createStyle[key] = props[key]
