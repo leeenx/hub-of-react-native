@@ -34,29 +34,47 @@ function getOrientation () {
 function generateStyle ({ css = {}, styles }) {
   styles = typeof styles !== 'function' ? styles : styles()
   if (styles instanceof Array) {
-    // 数组
-    styles.forEach(item => {
+    // 找出数组中 common
+    const commonStyles = styles.find(layoutStyles =>
+      layoutStyles.layout === 'common' ||
+      layoutStyles.layout === undefined
+    ) || {}
+    // 保证 commonStyles.layout 的值为 common
+    commonStyles.layout = 'common'
+    styles.forEach(layoutStyles => {
       // 如果没有 layout 项，表示它是一个公共样式
-      const layout = item.layout || 'common'
+      const layout = layoutStyles.layout
       css[layout] = css[layout] || {}
+      if (layout !== 'common') {
+        // 合并样式
+        const mergeStyles = {}
+        // 拷贝 commonStyles
+        for (const key in commonStyles) {
+          if (key === 'layout') continue
+          mergeStyles[key] = Object.assign({}, commonStyles[key])
+        }
+        // 与当前样式合并
+        for (const key in layoutStyles) {
+          if (key === 'layout') {
+            mergeStyles[key] = layoutStyles[key]
+          } else if (mergeStyles[key]) {
+            // 合并
+            Object.assign(
+              mergeStyles[key],
+              layoutStyles[key]
+            )
+          } else {
+            // 新增
+            mergeStyles[key] = layoutStyles[key]
+          }
+        }
+        layoutStyles = mergeStyles
+      }
       generateStyle({
         css: css[layout],
-        styles: item
+        styles: layoutStyles
       })
     })
-    // 将公共样式合并到其它 layout 中
-    const common = css['common']
-    if (common !== undefined) {
-      for (const layout in css) {
-        if (layout === 'common') continue
-        const curretLayout = css[layout]
-        Object.assign(
-          curretLayout,
-          common,
-          curretLayout
-        )
-      }
-    }
   } else {
     const newStyles = Object.assign({}, styles)
     // 剔除 layout
