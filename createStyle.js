@@ -13,11 +13,12 @@ import {
 
 const LANDSCAPE = 'landscape'
 const PORTRAIT = 'portrait'
+const { isIPhoneX_deprecated } = DeviceInfo
 // 状态栏高度
 let statusBarHeight = StatusBar.currentHeight
 const setStatusBarHeight = () => {
   if (Platform.OS === 'ios') {
-    if (DeviceInfo.isIPhoneX_deprecated && getOrientation() === PORTRAIT) {
+    if (isIPhoneX_deprecated && getOrientation() === PORTRAIT) {
       // iPhoneX
       statusBarHeight = 44
     } else {
@@ -307,7 +308,9 @@ function getRGBFromHex (hex) {
   const count = hex.length
   const step = count === 3 ? 1 : 2
   for (let i = 0; i < count; i += step) {
-    const base10 = Number(`0x${hex.substr(i, step)}`).toString(10)
+    const base16 = hex.substr(i, step)
+    const xhh = step === 2 ? base16 : `${base16}${base16}`
+    const base10 = Number(`0x${xhh}`).toString(10)
     rgb.push(base10)
   }
   return rgb
@@ -366,13 +369,14 @@ function rgba (...arg) {
     }
     throw `expect a parameter like #RRGGBBAA or #RGBA`
   } else if (count === 2) {
-    if (isHexRGB(arg[0]) && typeof arg[1] === 'number') {
+    const rgb = arg[0]
+    if (isHexRGB(rgb) && typeof arg[1] === 'number') {
       const alpha = Math.min(arg[1], 1)
       const [
         red,
         green,
         blue
-      ] = getRGBFromHex(arg[0])
+      ] = getRGBFromHex(rgb)
       return `rgba(${red}, ${green}, ${blue}, ${alpha})`
     }
     throw `arguments error, please call it like: rgba('#rgb', 0~1) or rgba('#rrggbb', 0~1)`
@@ -437,6 +441,7 @@ function mountStaticProps () {
     absoluteFillObject
   } = StyleSheet
   const props = {
+    isIPhoneX: isIPhoneX_deprecated,
     hairlineWidth,
     padding,
     margin,
