@@ -93,12 +93,17 @@ function fourValue (one = 0, two = one, three = one, four = two) {
 
 // 处理 margin
 function margin (...arg) {
-  const [top, right, bottom, left] = fourValue(...arg)
+  const [
+    marginTop,
+    marginRight,
+    marginBottom,
+    marginLeft
+  ] = fourValue(...arg)
   return {
-    marginTop: top,
-    marginRight: right,
-    marginBottom: bottom,
-    marginLeft: left
+    marginTop,
+    marginRight,
+    marginBottom,
+    marginLeft
   }
 }
 
@@ -133,6 +138,131 @@ function shadow (...arg) {
     },
     color,
     radius
+  }
+}
+
+// 处理 border
+function border (...arg) {
+  let [
+    borderColor,
+    borderWidth,
+    borderStyle
+  ] = [
+    '#000',
+    0,
+    'solid'
+  ]
+  let hasSetColor = false
+  let hasSetWidth = false
+  let hasSetStyle = false
+  arg.forEach(
+    item => {
+      if (isColor(item)) {
+        if (!hasSetColor) {
+          hasSetColor = true
+          borderColor = item
+        } else {
+          throw `border: duplicate borderColor!`
+        }
+      } else if (typeof item === 'number') {
+        if (!hasSetWidth) {
+          hasSetWidth = true
+          borderWidth = item
+        } else {
+          throw `border: duplicate borderWidth!`
+        }
+      } else if (isBorderStyle(item)) {
+        if (!hasSetStyle) {
+          hasSetStyle = true
+          borderStyle = item
+        } else {
+          throw `border: duplicate borderStyle!`
+        }
+      } else {
+        throw `border: invalid arguments!`
+      }
+    }
+  )
+  return {
+    borderColor,
+    borderWidth,
+    borderStyle
+  }
+}
+
+// 处理 borderWidth
+function borderWidth (...arg) {
+  const [
+    borderTopWidth,
+    borderRightWidth,
+    borderBottomWidth,
+    borderLeftWidth
+  ] = fourValue(...arg)
+  return {
+    borderTopWidth,
+    borderRightWidth,
+    borderBottomWidth,
+    borderLeftWidth
+  }
+}
+
+// 处理 borderStyle
+function borderStyle (...arg) {
+  const [
+    borderTopStyle,
+    borderRightStyle,
+    borderBottomStyle,
+    borderLeftStyle
+  ] = fourValue(...arg)
+  return {
+    borderTopStyle,
+    borderRightStyle,
+    borderBottomStyle,
+    borderLeftStyle
+  }
+}
+
+// 处理 borderColor
+function borderColor (...arg) {
+  const [
+    borderTopColor,
+    borderRightColor,
+    borderBottomColor,
+    borderLeftColor
+  ] = fourValue(...arg)
+  return {
+    borderTopColor,
+    borderRightColor,
+    borderBottomColor,
+    borderLeftColor
+  }
+}
+
+// 处理 borderRadius
+// 处理 borderColor
+function borderRadius (...arg) {
+  const [
+    borderTopLeftRadius,
+    borderTopRightRadius,
+    borderBottomLeftRadius,
+    borderBottomRightRadius
+  ] = fourValue(...arg)
+  return {
+    borderTopLeftRadius,
+    borderTopRightRadius,
+    borderBottomLeftRadius,
+    borderBottomRightRadius
+  }
+}
+
+function isBorderStyle (style) {
+  switch (style) {
+    case 'solid':
+    case 'dotted':
+    case 'dashed':
+      return true
+    default:
+      return false
   }
 }
 
@@ -208,14 +338,12 @@ function hex (base10) {
 // rgb 颜色函数
 function rgb (...arg) {
   const count = arg.length
-  if (
-    count === 1 &&
-    typeof arg[0] === 'string' &&
-    (arg[0].length === 3 || arg[0].length === 6) &&
-    arg[0] === '#'
-  ) {
-    // 转入的是 hex 值
-    return rgba(arg[0], 1)
+  if (count === 1) {
+    if (isHexRGB(arg[0])) {
+      // 转入的是 hex 值
+      return rgba(arg[0], 1)
+    }
+    throw `argument error, please call it like: rgb('#rgb') or rgb('#rrggbb')`
   } else if (count === 3) {
     return rgba(...arg, 1)
   }
@@ -226,20 +354,28 @@ function rgb (...arg) {
 // rgba 颜色函数
 function rgba (...arg) {
   const count = arg.length
-  if (
-    count === 2 &&
-    typeof arg[0] === 'string' &&
-    (arg[0].length === 4 || arg[0].length === 7) &&
-    arg[0][0] === '#' &
-    typeof arg[1] === 'number'
-  ) {
-    const alpha = arg[1]
-    const [
-      red,
-      green,
-      blue
-    ] = getRGBFromHex(arg[0])
-    return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+  if (count === 1) {
+    if (isHexRGBA(arg[0])) {
+      const [
+        red,
+        green,
+        blue,
+        alpha
+      ] = getRGBAFromHex(arg[0])
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+    }
+    throw `expect a parameter like #RRGGBBAA or #RGBA`
+  } else if (count === 2) {
+    if (isHexRGB(arg[0]) && typeof arg[1] === 'number') {
+      const alpha = Math.min(arg[1], 1)
+      const [
+        red,
+        green,
+        blue
+      ] = getRGBFromHex(arg[0])
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+    }
+    throw `arguments error, please call it like: rgba('#rgb', 0~1) or rgba('#rrggbb', 0~1)`
   } else if (count === 4) {
     if (
       arg.every(item => typeof item === 'number')
@@ -255,7 +391,32 @@ function rgba (...arg) {
     throw `please make sure every argument is a number`
   }
   // 异常
-  throw `function rgba expect 2 or 4 arguments, but ${count} argument(s) supply`
+  throw `function rgba expect 1, 2 or 4 arguments, but ${count} argument(s) supply`
+}
+
+// 判断是不是颜色值
+function isColor (color) {
+  if (
+    isHexRGB(color) ||
+    isHexRGBA(color) ||
+    color instanceof rgb ||
+    color instanceof rgba ||
+    /rgb\(.+\)/i.test(color) ||
+    /rgba\(.+\)/i.test(color)
+  ) {
+    return true
+  }
+  return false
+}
+
+// 判断是不是 hex(#rgb 或 #rrggbb) 类型颜色
+function isHexRGB (color) {
+  return /^#[0-9a-f]{3}$|^#[0-9a-f]{6}$/i.test(color)
+}
+
+// 判断是不是 hex(#rgba 或 #rrggbbaa) 类型颜色
+function isHexRGBA (color) {
+  return /^#[0-9a-f]{4}$|^#[0-9a-f]{8}$/i.test(color)
 }
 
 // 挂载静态属性
@@ -291,6 +452,11 @@ function mountStaticProps () {
     textShadow,
     rgb,
     rgba,
+    border,
+    borderStyle,
+    borderWidth,
+    borderColor,
+    borderRadius
   }
   for (const key in props) {
     createStyle[key] = props[key]
