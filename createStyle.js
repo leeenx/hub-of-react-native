@@ -31,6 +31,146 @@ function getOrientation () {
   return width > height ? LANDSCAPE : PORTRAIT
 }
 
+// nth-child函数
+function nth (pattern) {
+  const index = nth.count++
+  const styleName = `:nth-child-${index}`
+  nth.map[styleName] = {
+    styleName,
+    test: genTest(pattern)
+  }
+  return `:nth-child-${index}`
+}
+// 表示 nth-child 的 classname 的集合
+nth.map = []
+// 缓存
+nth.cache = {}
+nth.count = 0
+nth.query = (nthList, css, ...args) => {
+  const cacheKey = `${nthList['@key']}|${args.join('|')}`
+  const cache = nth.cache[cacheKey]
+  if (cache) return cache
+  // 要返回的 styles 数组
+  let styles = []
+  const len = args.length
+  const lastIndex = len - 1
+  const last = Number(args[lastIndex])
+  if (isNaN(last)) {
+    // 没有 nthChild 扩展
+    styles = args.map(styleName => css[styleName])
+  } else {
+    // 使用 css 的索引标准
+    const index = last + 1
+    // 将 index 从 args 中移除
+    args.pop()
+    const styleNames = args
+    styleNames.forEach(styleName => {
+      styles.push(css[styleName])
+      if (nthList[styleName]) {
+        // 存在 nthChild 扩展
+        nthList[styleName].forEach(
+          ({ test, styleName }) => {
+            if (test(index)) {
+              // 与 nthChild 匹配
+              styles.push(css[styleName])
+            }
+          }
+        )
+      }
+    })
+  }
+  nth.cache[cacheKey] = styles
+  return styles
+}
+
+// 生成 styleNames 方法
+function createStyleNames (nthList, css) {
+  return (...arg) => {
+    if (arg.length === 1 && typeof arg[0] === 'object') {
+      // 参数为 Object
+      const argMap = arg[0]
+      const argList = []
+      const nthChildIndex = -1
+      for (const key in argMap) {
+        const value = argMap[key]
+        if (key === 'index') {
+          nthChildIndex = value
+          continue
+        }
+        if (value) {
+          argList.push(key)
+        }
+      }
+      if (nthChildIndex >= 0) {
+        argList.push(nthChildIndex)
+      }
+      // 生成新的 arg 数组
+      arg = argList
+    }
+    return nth.query(nthList, css, ...arg)
+  }
+}
+
+// 生成一个不会重复的 key 值
+function genKey () {
+  return `${Date.now()}-${genKey.count++}`
+}
+
+genKey.count = 0
+
+// 生成检验 pattern 和 test 方法
+function genTest (pattern) {
+  const reg = /(^\-\d+n?|^\d*n)(\-|\+(\d+n?|\d*n))*$/
+  if (reg.test(pattern)) {
+    // 运算符
+    const operators = pattern.split(/\d*n|\d+n?/)
+    // 数字
+    const components = pattern.split(/\+|\-/)
+    // 剔除头尾无效的运算符
+    operators[0] === '' && operators.shift()
+    operators[operators.length - 1] === '' &&
+    operators.pop()
+    // 剔除第一个无效数字
+    components[0] === '' && components.shift()
+    // 保证第一个 components 都带[+, -]
+    if (operators.length < components.length) {
+      operators.unshift('+')
+    }
+    // 将 pattern 合并成标准格式：an + b
+    let a = 0
+    let b = 0
+    for (let i = 0; i < components.length; ++i) {
+      const operator = operators[i]
+      const component = components[i]
+      const sum = operatorAdd(
+        b,
+        operator,
+        Number(component)
+      )
+      if (!isNaN(sum)) {
+        b = sum
+      } else {
+        a = operatorAdd(
+          a,
+          operator,
+          parseInt(component)
+        )
+      }
+    }
+    return index => (index - b) % a === 0
+  } else {
+    // 样本格式不正确
+    console.error('error pattern')
+  }
+}
+// 加减操作
+function operatorAdd (num1, operator, num2) {
+  if (operator === '+') {
+    return num1 + num2
+  }
+  return num1 - num2
+}
+
 // 生成样式
 function generateStyle ({ css = {}, styles }) {
   styles = typeof styles !== 'function' ? styles : styles()
@@ -80,9 +220,33 @@ function generateStyle ({ css = {}, styles }) {
     const newStyles = Object.assign({}, styles)
     // 剔除 layout
     delete newStyles.layout
+    // nth-child 功能
+    const nthList = {
+      '@key': genKey()
+    }
+    for (const name in newStyles) {
+      const style = newStyles[name]
+      for (const key in style) {
+        if (key.indexOf(':nth-child-') === 0) {
+          // 将 nth-child 的样式外移到 newStyle 上
+          const nthChildStyle = style[key]
+          delete style[key]
+          // 按 styleName 来存储 nthList
+          if (!nthList[name]) {
+            nthList[name] = []
+          }
+          nthList[name].push(nth.map[key])
+          newStyles[key] = nthChildStyle
+        }
+      }
+    }
+
     Object.assign(
       css,
-      StyleSheet.create(newStyles)
+      StyleSheet.create(newStyles),
+      {
+        styleNames: createStyleNames(nthList, css)
+      }
     )
   }
   return css
@@ -116,29 +280,6 @@ function padding (...arg) {
     paddingRight: right,
     paddingBottom: bottom,
     paddingLeft: left
-  }
-}
-
-// 处理阴影
-function shadow (...arg) {
-  let [offsetX, offsetY, radius, color] = [0, 0, 0, 'rgba(0, 0, 5, 0.5)']
-  switch (arg.length) {
-    case 2:
-      [offsetX, offsetY] = arg
-      break
-    case 3:
-      [offsetX, offsetY, color] = arg
-    case 4:
-    default:
-      [offsetX, offsetY, radius, color] = arg
-  }
-  return {
-    offset: {
-      height: offsetY,
-      width: offsetX
-    },
-    color,
-    radius
   }
 }
 
@@ -267,8 +408,35 @@ function isBorderStyle (style) {
   }
 }
 
+// 处理阴影
+function shadow (...arg) {
+  let [offsetX, offsetY, radius, color] = [0, 0, 0, 'rgba(0, 0, 5, 0.5)']
+  switch (arg.length) {
+    case 2:
+      [offsetX, offsetY] = arg
+      break
+    case 3:
+      [offsetX, offsetY, color] = arg
+    case 4:
+    default:
+      [offsetX, offsetY, radius, color] = arg
+  }
+  return {
+    offset: {
+      height: offsetY,
+      width: offsetX
+    },
+    color,
+    radius
+  }
+}
+
 // 处理 boxShadow
 function boxShadow (...arg) {
+  const isNull = (
+    arg.length === 1 &&
+    arg[0] === null
+  )
   const {
     offset,
     color,
@@ -278,7 +446,7 @@ function boxShadow (...arg) {
     shadowOffset: offset,
     shadowColor: color,
     shadowRadius: radius,
-    shadowOpacity: 1
+    shadowOpacity: isNull ? 0 : 1
   }
 }
 
@@ -461,7 +629,8 @@ function mountStaticProps () {
     borderStyle,
     borderWidth,
     borderColor,
-    borderRadius
+    borderRadius,
+    nth
   }
   for (const key in props) {
     createStyle[key] = props[key]
@@ -492,4 +661,8 @@ Dimensions.addEventListener('change', function () {
   createStyleQueue.forEach(generateStyle)
   // 更新静态属性
   mountStaticProps()
+  // 重置 nth-child
+  nth.map = []
+  nth.cache = {}
+  nth.count = 0
 })
