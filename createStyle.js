@@ -47,7 +47,7 @@ nth.map = []
 nth.cache = {}
 nth.count = 0
 nth.query = (nthList, css, ...args) => {
-  const cacheKey = `${nthList['@key']}|${args.join('|')}`
+  const cacheKey = `${nthList['#key']}|${args.join('|')}`
   const cache = nth.cache[cacheKey]
   if (cache) return cache
   // 要返回的 styles 数组
@@ -86,28 +86,31 @@ nth.query = (nthList, css, ...args) => {
 // 生成 styleNames 方法
 function createStyleNames (nthList, css) {
   return (...arg) => {
-    if (arg.length === 1 && typeof arg[0] === 'object') {
-      // 参数为 Object
-      const argMap = arg[0]
-      const argList = []
-      const nthChildIndex = -1
-      for (const key in argMap) {
-        const value = argMap[key]
-        if (key === 'index') {
-          nthChildIndex = value
-          continue
-        }
-        if (value) {
-          argList.push(key)
+    const styleNames = []
+    let nthChildIndex = -1
+    arg.forEach(styleName => {
+      if (
+        typeof styleName === 'string' ||
+        typeof styleName === 'number'
+      ) {
+        styleNames.push(styleName)
+      } else if (typeof styleName === 'object') {
+        for (const key in styleName) {
+          const value = styleName[key]
+          if (key === 'index') {
+            nthChildIndex = value
+            continue
+          }
+          if (typeof value === 'boolean' && value) {
+            styleNames.push(key)
+          }
         }
       }
       if (nthChildIndex >= 0) {
-        argList.push(nthChildIndex)
+        styleNames.push(nthChildIndex)
       }
-      // 生成新的 arg 数组
-      arg = argList
-    }
-    return nth.query(nthList, css, ...arg)
+    })
+    return nth.query(nthList, css, ...styleNames)
   }
 }
 
@@ -120,8 +123,11 @@ genKey.count = 0
 
 // 生成检验 pattern 和 test 方法
 function genTest (pattern) {
-  const reg = /(^\-\d+n?|^\d*n)(\-|\+(\d+n?|\d*n))*$/
+  const reg = /(^\-?\d+n?|^\d*n)(\-|\+(\d+n?|\d*n))*$/
   if (reg.test(pattern)) {
+    if (typeof pattern === 'number') {
+      return index => index === pattern
+    } 
     // 运算符
     const operators = pattern.split(/\d*n|\d+n?/)
     // 数字
@@ -171,84 +177,189 @@ function operatorAdd (num1, operator, num2) {
   return num1 - num2
 }
 
-// 生成样式
-function generateStyle ({ css = {}, styles }) {
-  styles = typeof styles !== 'function' ? styles : styles()
-  if (styles instanceof Array) {
-    // 找出数组中 common
-    const commonStyles = styles.find(layoutStyles =>
-      layoutStyles.layout === 'common' ||
-      layoutStyles.layout === undefined
-    ) || {}
-    // 保证 commonStyles.layout 的值为 common
-    commonStyles.layout = 'common'
-    styles.forEach(layoutStyles => {
-      // 如果没有 layout 项，表示它是一个公共样式
-      const layout = layoutStyles.layout
-      css[layout] = css[layout] || {}
-      if (layout !== 'common') {
-        // 合并样式
-        const mergeStyles = {}
-        // 拷贝 commonStyles
-        for (const key in commonStyles) {
-          if (key === 'layout') continue
-          mergeStyles[key] = Object.assign({}, commonStyles[key])
-        }
-        // 与当前样式合并
-        for (const key in layoutStyles) {
-          if (key === 'layout') {
-            mergeStyles[key] = layoutStyles[key]
-          } else if (mergeStyles[key]) {
-            // 合并
-            Object.assign(
-              mergeStyles[key],
-              layoutStyles[key]
-            )
-          } else {
-            // 新增
-            mergeStyles[key] = layoutStyles[key]
-          }
-        }
-        layoutStyles = mergeStyles
-      }
-      generateStyle({
-        css: css[layout],
-        styles: layoutStyles
-      })
-    })
-  } else {
-    const newStyles = Object.assign({}, styles)
-    // 剔除 layout
-    delete newStyles.layout
-    // nth-child 功能
-    const nthList = {
-      '@key': genKey()
-    }
-    for (const name in newStyles) {
-      const style = newStyles[name]
-      for (const key in style) {
-        if (key.indexOf(':nth-child-') === 0) {
-          // 将 nth-child 的样式外移到 newStyle 上
-          const nthChildStyle = style[key]
-          delete style[key]
-          // 按 styleName 来存储 nthList
-          if (!nthList[name]) {
-            nthList[name] = []
-          }
-          nthList[name].push(nth.map[key])
-          newStyles[key] = nthChildStyle
-        }
-      }
-    }
+// 添加原料快照
+function addStyleSnap (snap, layoutStyle) {
+  const { layout = 'common' } = layoutStyle
+  snap[layout] = layoutStyle
+}
 
-    Object.assign(
-      css,
-      StyleSheet.create(newStyles),
-      {
-        styleNames: createStyleNames(nthList, css)
+// 布局管理 
+function createLayoutManager (css) {
+  let currentLayout = css.common
+  const layouts = (...arg) => {
+    const argMap = arg[0]
+    const argList = []
+    if (typeof argMap === 'object') {
+      for (const key in argMap) {
+        const value = argMap[key]
+        value && argList.push(key)
       }
-    )
+      layouts(...argList)
+    } else {
+      const layout = arg.join('&')
+      css[layout] = css[layout] || {}
+      const layoutStyle = css[layout]
+      const {
+        rawStyles,
+        rawStyleSnap
+      } = css
+      if (!layoutStyle) {
+        // 新增一个 layoutStyle
+        addLayoutStyle({
+          css: css[layout],
+          rawStyles,
+          rawStyleSnap,
+          layoutStyle: {
+            layout,
+            '@extendLayouts': arg
+          }
+        })
+      }
+      currentLayout = layoutStyle
+    }
   }
+  const styleNames = (...arg) => currentLayout.styleNames(...arg)
+  return {
+    layouts,
+    styleNames
+  }
+}
+
+// layout 复合
+function compositeLayout (...layoutStyles) {
+  const len = layoutStyles.length
+  const targetLayout = layoutStyles[0]
+  for (let i = 1; i < len; ++i) {
+    const layoutStyle = layoutStyles[i]
+    for (const key in layoutStyle) {
+      const value = layoutStyle[key]
+      if (key === 'layout') {
+        // layout 保持不变 
+        continue
+      }
+      if (targetLayout[key]) {
+        // 样式合并
+        Object.assign(
+          targetLayout[key],
+          value
+        )
+      } else {
+        // 新增
+        targetLayout[key] = Object.assign(
+          {},
+          value
+        )
+      }
+    }
+  }
+  return targetLayout
+}
+
+// 新增 layoutStyle
+function addLayoutStyle ({
+  css = {},
+  layoutStyle,
+  rawStyles,
+  rawStyleSnap
+}) {
+  const { layout } = layoutStyle
+  if (layout) {
+    rawStyles.push(layoutStyle)
+    rawStyleSnap[layout] = layoutStyle
+    generateStyle({ css, layoutStyle, rawStyleSnap })
+  }
+}
+
+// 生成一组样式
+function generateStyles ({ css = {}, styles }) {
+  // 强制原料样式必须是一个数组
+  const rawStyles = (
+    styles instanceof Array ? styles : [styles]
+  )
+  // 将 styles 拍平
+  const flatStyles = []
+  // 原料快照
+  const rawStyleSnap = {}
+  rawStyles.forEach(rawStyle => {
+    rawStyle = (
+      typeof rawStyle === 'function' ? rawStyle() : rawStyle
+    )
+    if (rawStyle instanceof Array) {
+      rawStyle.forEach(layoutStyle => {
+        addStyleSnap(rawStyleSnap, layoutStyle)
+        flatStyles.push(layoutStyle)
+      })
+    } else {
+      addStyleSnap(rawStyleSnap, rawStyle)
+      flatStyles.push(rawStyle)
+    }
+  })
+  // 生成目标样式
+  flatStyles.forEach(layoutStyle => {
+    const { layout = 'common' } = layoutStyle
+    css[layout] = css[layout] || {}
+    generateStyle({ css: css[layout], layoutStyle, rawStyleSnap })
+  })
+  const {
+    layouts,
+    styleNames
+  } = createLayoutManager(css)
+  // 挂载
+  Object.assign(
+    css,
+    {
+      rawStyles,
+      rawStyleSnap,
+      layouts,
+      styleNames
+    }
+  )
+  return css
+}
+
+// 生成一个样式
+function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
+  const commonStyle = rawStyleSnap.common
+  const extendLayoutNames = layoutStyle['@extendLayouts'] || []
+  const extendLayouts = extendLayoutNames.map(
+    layout => rawStyleSnap[layout]
+  )
+  const newStyle = compositeLayout(
+    {},
+    commonStyle,
+    ...extendLayouts,
+    layoutStyle
+  )
+  // 删除 @extendLayouts
+  delete newStyle['@extendLayouts']
+  // nth-child 功能
+  const nthList = {
+    '#key': genKey()
+  }
+  for (const name in newStyle) {
+    const style = newStyle[name]
+    for (const key in style) {
+      if (key.indexOf(':nth-child-') === 0) {
+        // 将 nth-child 的样式外移到 newStyle 上
+        const nthChildStyle = style[key]
+        delete style[key]
+        // 按 styleName 来存储 nthList
+        if (!nthList[name]) {
+          nthList[name] = []
+        }
+        nthList[name].push(nth.map[key])
+        newStyle[key] = nthChildStyle
+      }
+    }
+  }
+
+  Object.assign(
+    css,
+    StyleSheet.create(newStyle),
+    {
+      styleNames: createStyleNames(nthList, css)
+    }
+  )
   return css
 }
 
@@ -643,13 +754,13 @@ const getOrientation = () => {
 }
 
 // 队列
-const createStyleQueue = []
+const cssQueue = []
 
 export default function createStyle (styles) {
   // 生成样式
-  const css = generateStyle({styles})
+  const css = generateStyles({styles})
   // 保存当前样式
-  createStyleQueue.push({ css, styles })
+  cssQueue.push({ css })
   return css
 }
 
@@ -658,7 +769,11 @@ mountStaticProps()
 
 Dimensions.addEventListener('change', function () {
   // 重新生成样式
-  createStyleQueue.forEach(generateStyle)
+  cssQueue.forEach(
+    css => generateStyles({
+      css, styles: css.rawStyles
+    })
+  )
   // 更新静态属性
   mountStaticProps()
   // 重置 nth-child
