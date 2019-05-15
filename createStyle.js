@@ -459,22 +459,6 @@ function borderWidth (...arg) {
   }
 }
 
-// 处理 borderStyle
-function borderStyle (...arg) {
-  const [
-    borderTopStyle,
-    borderRightStyle,
-    borderBottomStyle,
-    borderLeftStyle
-  ] = fourValue(...arg)
-  return {
-    borderTopStyle,
-    borderRightStyle,
-    borderBottomStyle,
-    borderLeftStyle
-  }
-}
-
 // 处理 borderColor
 function borderColor (...arg) {
   const [
@@ -492,7 +476,6 @@ function borderColor (...arg) {
 }
 
 // 处理 borderRadius
-// 处理 borderColor
 function borderRadius (...arg) {
   const [
     borderTopLeftRadius,
@@ -505,6 +488,110 @@ function borderRadius (...arg) {
     borderTopRightRadius,
     borderBottomLeftRadius,
     borderBottomRightRadius
+  }
+}
+
+// borderTop
+function borderTop (...arg) {
+  // 最多只有三个参数
+  if (arg.length > 3) arg.length = 3
+  let borderTopColor
+  let borderTopWidth = 1
+  let borderStyle = 'solid'
+  arg.forEach(value => {
+    switch (value) {
+      case isColor(value):
+        borderTopColor = value
+        break
+      case typeof value === 'number':
+        borderTopWidth = value
+        break
+      default:
+        borderStyle = value
+    }
+  })
+  return {
+    borderTopColor,
+    borderTopWidth,
+    borderStyle
+  }
+}
+
+// borderRight
+function borderRight (...arg) {
+  // 最多只有三个参数
+  if (arg.length > 3) arg.length = 3
+  let borderRightColor
+  let borderRightWidth = 1
+  let borderStyle = 'solid'
+  arg.forEach(value => {
+    switch (value) {
+      case isColor(value):
+        borderRightColor = value
+        break
+      case typeof value === 'number':
+        borderRightWidth = value
+        break
+      default:
+        borderStyle = value
+    }
+  })
+  return {
+    borderRightColor,
+    borderRightWidth,
+    borderStyle
+  }
+}
+
+// borderBottom
+function borderBottom (...arg) {
+  // 最多只有三个参数
+  if (arg.length > 3) arg.length = 3
+  let borderBottomColor
+  let borderBottomWidth = 1
+  let borderStyle = 'solid'
+  arg.forEach(value => {
+    switch (value) {
+      case isColor(value):
+        borderBottomColor = value
+        break
+      case typeof value === 'number':
+        borderBottomWidth = value
+        break
+      default:
+        borderStyle = value
+    }
+  })
+  return {
+    borderBottomColor,
+    borderBottomWidth,
+    borderStyle
+  }
+}
+
+// borderLeft
+function borderLeft (...arg) {
+  // 最多只有三个参数
+  if (arg.length > 3) arg.length = 3
+  let borderLeftColor
+  let borderLeftWidth = 1
+  let borderStyle = 'solid'
+  arg.forEach(value => {
+    switch (value) {
+      case isColor(value):
+        borderLeftColor = value
+        break
+      case typeof value === 'number':
+        borderLeftWidth = value
+        break
+      case isBorderStyle(value):
+        borderStyle = value
+    }
+  })
+  return {
+    borderLeftColor,
+    borderLeftWidth,
+    borderStyle
   }
 }
 
@@ -737,10 +824,13 @@ function mountStaticProps () {
     rgb,
     rgba,
     border,
-    borderStyle,
     borderWidth,
     borderColor,
     borderRadius,
+    borderTop,
+    borderRight,
+    borderBottom,
+    borderLeft,
     nth
   }
   for (const key in props) {
