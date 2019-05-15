@@ -396,46 +396,21 @@ function padding (...arg) {
 
 // 处理 border
 function border (...arg) {
-  let [
-    borderColor,
-    borderWidth,
-    borderStyle
-  ] = [
-    '#000',
-    0,
-    'solid'
-  ]
-  let hasSetColor = false
-  let hasSetWidth = false
-  let hasSetStyle = false
-  arg.forEach(
-    item => {
-      if (isColor(item)) {
-        if (!hasSetColor) {
-          hasSetColor = true
-          borderColor = item
-        } else {
-          throw `border: duplicate borderColor!`
-        }
-      } else if (typeof item === 'number') {
-        if (!hasSetWidth) {
-          hasSetWidth = true
-          borderWidth = item
-        } else {
-          throw `border: duplicate borderWidth!`
-        }
-      } else if (isBorderStyle(item)) {
-        if (!hasSetStyle) {
-          hasSetStyle = true
-          borderStyle = item
-        } else {
-          throw `border: duplicate borderStyle!`
-        }
-      } else {
-        throw `border: invalid arguments!`
-      }
+  // 最多只有三个参数
+  if (arg.length > 3) arg.length = 3
+  let borderColor
+  let borderWidth = 1
+  let borderStyle = 'solid'
+  console.log(arg)
+  arg.forEach(value => {
+    if (isColor(value)) {
+      borderColor = value
+    } else if (typeof value === 'number') {
+      borderWidth = value
+    } else if (isBorderStyle(value)) {
+      borderStyle = value
     }
-  )
+  })
   return {
     borderColor,
     borderWidth,
@@ -499,15 +474,12 @@ function borderTop (...arg) {
   let borderTopWidth = 1
   let borderStyle = 'solid'
   arg.forEach(value => {
-    switch (value) {
-      case isColor(value):
-        borderTopColor = value
-        break
-      case typeof value === 'number':
-        borderTopWidth = value
-        break
-      default:
-        borderStyle = value
+    if (isColor(value)) {
+      borderTopColor = value
+    } else if (typeof value === 'number') {
+      borderTopWidth = value
+    } else if (isBorderStyle(value)) {
+      borderStyle = value
     }
   })
   return {
@@ -525,15 +497,12 @@ function borderRight (...arg) {
   let borderRightWidth = 1
   let borderStyle = 'solid'
   arg.forEach(value => {
-    switch (value) {
-      case isColor(value):
-        borderRightColor = value
-        break
-      case typeof value === 'number':
-        borderRightWidth = value
-        break
-      default:
-        borderStyle = value
+    if (isColor(value)) {
+      borderRightColor = value
+    } else if (typeof value === 'number') {
+      borderRightWidth = value
+    } else if (isBorderStyle(value)) {
+      borderStyle = value
     }
   })
   return {
@@ -551,15 +520,12 @@ function borderBottom (...arg) {
   let borderBottomWidth = 1
   let borderStyle = 'solid'
   arg.forEach(value => {
-    switch (value) {
-      case isColor(value):
-        borderBottomColor = value
-        break
-      case typeof value === 'number':
-        borderBottomWidth = value
-        break
-      default:
-        borderStyle = value
+    if (isColor(value)) {
+      borderBottomColor = value
+    } else if (typeof value === 'number') {
+      borderBottomWidth = value
+    } else if (isBorderStyle(value)) {
+      borderStyle = value
     }
   })
   return {
@@ -577,15 +543,12 @@ function borderLeft (...arg) {
   let borderLeftWidth = 1
   let borderStyle = 'solid'
   arg.forEach(value => {
-    switch (value) {
-      case isColor(value):
-        borderLeftColor = value
-        break
-      case typeof value === 'number':
-        borderLeftWidth = value
-        break
-      case isBorderStyle(value):
-        borderStyle = value
+    if (isColor(value)) {
+      borderLeftColor = value
+    } else if (typeof value === 'number') {
+      borderLeftWidth = value
+    } else if (isBorderStyle(value)) {
+      borderStyle = value
     }
   })
   return {
