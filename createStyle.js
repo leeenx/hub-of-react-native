@@ -336,7 +336,10 @@ function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
   const nthList = {
     '#key': genKey()
   }
-  for (const name in newStyle) {
+  // 支持多层嵌套
+  const names = Object.keys(newStyle)
+  while (names.length) {
+    const name = names.pop()
     const style = newStyle[name]
     for (const key in style) {
       if (key.indexOf(':nth-child-') === 0) {
@@ -349,6 +352,26 @@ function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
         }
         nthList[name].push(nth.map[key])
         newStyle[key] = nthChildStyle
+      } else if (key.indexOf('&') === 0) {
+        // 将 & 生成的新样式名外移到 newStyle 上
+        const newName = name + key.replace('&', '')
+        if (newStyle[newName]) {
+          // 有同名样式，合并样式
+          Object.assign(
+            newStyle[newName],
+            style[key]
+          )
+          if (names.includes(key) === false) {
+            // newStyle[newName] 已被解析过，需要再次解析
+            names.push(newName)
+          }
+        } else {
+          // 直接生成新样式
+          newStyle[newName] = style[key]
+          names.push(newName)
+        }
+        // 删除 & 样式
+        delete style[key]
       }
     }
   }
@@ -401,7 +424,6 @@ function border (...arg) {
   let borderColor
   let borderWidth = 1
   let borderStyle = 'solid'
-  console.log(arg)
   arg.forEach(value => {
     if (isColor(value)) {
       borderColor = value
