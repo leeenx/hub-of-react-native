@@ -11,6 +11,8 @@ import {
   Platform
 } from 'react-native'
 
+import transform from './transform'
+
 const LANDSCAPE = 'landscape'
 const PORTRAIT = 'portrait'
 const { isIPhoneX_deprecated } = DeviceInfo
@@ -87,6 +89,7 @@ nth.query = (nthList, css, ...args) => {
 function createStyleNames (nthList, css) {
   return (...arg) => {
     const styleNames = []
+    let inlineStyle = {}
     let nthChildIndex = -1
     arg.forEach(styleName => {
       if (
@@ -95,22 +98,44 @@ function createStyleNames (nthList, css) {
       ) {
         styleNames.push(styleName)
       } else if (typeof styleName === 'object') {
-        for (const key in styleName) {
-          const value = styleName[key]
-          if (key === 'index') {
-            nthChildIndex = value
-            continue
-          }
-          if (typeof value === 'boolean' && value) {
-            styleNames.push(key)
-          }
+        const keys = Object.keys(styleName)
+        const firstKey = keys[0]
+        const firstValue = styleName[firstKey]
+        if (
+          firstKey === 'index' ||
+          (
+            // includeFontPadding 是 React Native 样式中唯一个 bool 类型的样式
+            firstKey !== 'includeFontPadding' &&
+            (
+              typeof firstValue === 'boolean' ||
+              typeof firstValue === 'undefined'
+            )
+          )
+        ) {
+          // 正常的 styleName
+          keys.forEach(key => {
+            const value = styleName[key]
+            if (key === 'index') {
+              nthChildIndex = value
+              return
+            }
+            if (typeof value === 'boolean' && value) {
+              styleNames.push(key)
+            }
+          })
+        } else {
+          // 内联 style 对象
+          inlineStyle = styleName
         }
       }
       if (nthChildIndex >= 0) {
         styleNames.push(nthChildIndex)
       }
     })
-    return nth.query(nthList, css, ...styleNames)
+    return [
+      nth.query(nthList, css, ...styleNames),
+      inlineStyle
+    ]
   }
 }
 
@@ -336,11 +361,16 @@ function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
   const nthList = {
     '#key': genKey()
   }
+  // 待合并的样式
+  const extendStyle = {}
   // 支持多层嵌套
   const names = Object.keys(newStyle)
   while (names.length) {
     const name = names.pop()
     const style = newStyle[name]
+    // transform-origin
+    const { transformOrigin = null } = style
+    delete style.transformOrigin
     for (const key in style) {
       if (key.indexOf(':nth-child-') === 0) {
         // 将 nth-child 的样式外移到 newStyle 上
@@ -372,8 +402,37 @@ function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
         }
         // 删除 & 样式
         delete style[key]
+      } else if (key === 'transform') {
+        // tranform 扩展
+        const value = style[key]
+        // tranform 值为 string 时，表示它是扩展写法
+        if (typeof value === 'string') {
+          const { width, height } = style
+          style[key] = transform(
+            value,
+            transformOrigin,
+            { width, height }
+          )
+        }
+      } else if (typeof staticProps[key] === 'function') {
+        // 调用 staticProps 上的方法
+        const value = style[key]
+        const propFun = staticProps[key]
+        // 强制要求value是string
+        if (typeof value === 'string') {
+          delete style[key]
+          // 加到扩展样式中
+          Object.assign(
+            extendStyle,
+            propFun(...propFun.parseArg(value))
+          )
+        }
       }
     }
+    Object.assign(
+      style,
+      extendStyle
+    )
   }
 
   Object.assign(
@@ -390,6 +449,7 @@ function fourValue (one = 0, two = one, three = one, four = two) {
   return [one, two, three, four]
 }
 
+
 // 处理 margin
 function margin (...arg) {
   const [
@@ -405,6 +465,11 @@ function margin (...arg) {
     marginLeft
   }
 }
+margin.parseArg = function (argStr) {
+  return argStr.split(/\s+/).map(
+    value => Number(value) || 0
+  )
+}
 
 // 处理 padding
 function padding (...arg) {
@@ -416,6 +481,7 @@ function padding (...arg) {
     paddingLeft: left
   }
 }
+padding.parseArg = margin.parseArg
 
 // 处理 border
 function border (...arg) {
@@ -423,7 +489,6 @@ function border (...arg) {
   if (arg.length > 3) arg.length = 3
   let borderColor
   let borderWidth = 1
-  let borderStyle = 'solid'
   arg.forEach(value => {
     if (isColor(value)) {
       borderColor = value
@@ -438,6 +503,22 @@ function border (...arg) {
     borderWidth,
     borderStyle
   }
+}
+border.parseArg = function (argStr) {
+  return argStr.replace(/\,\s+/g, ',').split(/\s+/).map(value => {
+    if (value.indexOf('#') > 0) {
+      if (isRGB(value)) {
+        // 表示是使用扩展的 rgb 方法
+        value = parseRGB(value)
+      } else if(isRGBA(value)) {
+        // 表示是使用扩展的 rgba 方法
+        value = parseRGBA(value)
+      }
+    } else {
+      value = Number(value) || value
+    }
+    return value
+  })
 }
 
 // 处理 borderWidth
@@ -455,6 +536,7 @@ function borderWidth (...arg) {
     borderLeftWidth
   }
 }
+borderWidth.parseArg = margin.parseArg
 
 // 处理 borderColor
 function borderColor (...arg) {
@@ -470,6 +552,20 @@ function borderColor (...arg) {
     borderBottomColor,
     borderLeftColor
   }
+}
+borderColor.parseArg = function (argStr) {
+  return argStr.replace(/\,\s+/g, ',').split(/\s+/).map(color => {
+    if (color.indexOf('#') > 0) {
+      if (isRGB(color)) {
+        // 表示是使用扩展的 rgb 方法
+        color = parseRGB(color)
+      } else if(isRGBA(color)) {
+        // 表示是使用扩展的 rgba 方法
+        color = parseRGBA(color)
+      }
+    }
+    return color
+  })
 }
 
 // 处理 borderRadius
@@ -487,6 +583,7 @@ function borderRadius (...arg) {
     borderBottomRightRadius
   }
 }
+borderRadius.parseArg = margin.parseArg
 
 // borderTop
 function borderTop (...arg) {
@@ -510,6 +607,7 @@ function borderTop (...arg) {
     borderStyle
   }
 }
+borderTop.parseArg = border.parseArg
 
 // borderRight
 function borderRight (...arg) {
@@ -533,6 +631,7 @@ function borderRight (...arg) {
     borderStyle
   }
 }
+borderRight.parseArg = border.parseArg
 
 // borderBottom
 function borderBottom (...arg) {
@@ -556,6 +655,7 @@ function borderBottom (...arg) {
     borderStyle
   }
 }
+borderBottom.parseArg = border.parseArg
 
 // borderLeft
 function borderLeft (...arg) {
@@ -579,6 +679,7 @@ function borderLeft (...arg) {
     borderStyle
   }
 }
+borderLeft.parseArg = border.parseArg
 
 function isBorderStyle (style) {
   switch (style) {
@@ -632,6 +733,7 @@ function boxShadow (...arg) {
     shadowOpacity: isNull ? 0 : 1
   }
 }
+boxShadow.parseArg = border.parseArg
 
 // 处理 textShadow
 function textShadow (...arg) {
@@ -646,6 +748,7 @@ function textShadow (...arg) {
     textShadowRadius: radius
   }
 }
+textShadow.parseArg = border.parseArg
 
 // rgb转hex函数
 function rgb2Hex(red, green, blue) {
@@ -749,6 +852,21 @@ function rgba (...arg) {
   throw `function rgba expect 1, 2 or 4 arguments, but ${count} argument(s) supply`
 }
 
+// 由 'rgb(#rgb)' 转换成 rgb('#rgb')
+function parseRGB (str) {
+  const hex = str.replace(/rgb\(|\)/g, '')
+  return rgb(hex)
+}
+
+// 由 'rgba(#rgb, a)' 转换成 rgba('#rgb', a)
+function parseRGBA (str) {
+const [hex, opacity] = str.replace(/rgba\(|\)/g, '').split(/\,\s*/)
+  if (isHexRGBA(hex)) {
+    return rgba(hex)
+  }
+  return rgba(hex, opacity)
+}
+
 // 判断是不是颜色值
 function isColor (color) {
   if (
@@ -756,12 +874,22 @@ function isColor (color) {
     isHexRGBA(color) ||
     color instanceof rgb ||
     color instanceof rgba ||
-    /rgb\(.+\)/i.test(color) ||
-    /rgba\(.+\)/i.test(color)
+    isRGB(color) ||
+    isRGBA(color)
   ) {
     return true
   }
   return false
+}
+
+// 判断是不是 rgb 颜色
+function isRGB (color) {
+  return /rgb\(.+\)/i.test(color)
+}
+
+// 判断是不是 rgba 颜色
+function isRGBA (color) {
+  return /rgba\(.+\)/i.test(color)
 }
 
 // 判断是不是 hex(#rgb 或 #rrggbb) 类型颜色
@@ -773,7 +901,8 @@ function isHexRGB (color) {
 function isHexRGBA (color) {
   return /^#[0-9a-f]{4}$|^#[0-9a-f]{8}$/i.test(color)
 }
-
+// 静态属性
+let staticProps = null
 // 挂载静态属性
 function mountStaticProps () {
   // 设置状态栏高度
@@ -791,7 +920,7 @@ function mountStaticProps () {
     absoluteFill,
     absoluteFillObject
   } = StyleSheet
-  const props = {
+  staticProps = {
     isIPhoneX: isIPhoneX_deprecated,
     hairlineWidth,
     padding,
@@ -818,8 +947,8 @@ function mountStaticProps () {
     borderLeft,
     nth
   }
-  for (const key in props) {
-    createStyle[key] = props[key]
+  for (const key in staticProps) {
+    createStyle[key] = staticProps[key]
   }
 }
 
