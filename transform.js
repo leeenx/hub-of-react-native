@@ -181,7 +181,16 @@ function fetchMatrixCol (matrix) {
   }
 }
 // transform-origin
-function setTransformOrigin (matrix3d, [ x = 0, y = x, z = 0 ]) {
+function setTransformOrigin (matrix3d, [ x = 0, y = x, z = 0 ], { width, height }) {
+  if (!width || !height) {
+    console.error('can set transform-origin! please set the propeties <width, height>')
+  } else if (
+    typeof width !== 'number' ||
+    typeof height !== 'number'
+  ) {
+    console.error('can set transform-origin! expect number type of width/height')
+  }
+  [x, y] = [x - width / 2, y - height / 2]
   const [
     a, b, c, d,
     e, f, g, h,
@@ -195,10 +204,10 @@ function setTransformOrigin (matrix3d, [ x = 0, y = x, z = 0 ]) {
   ]
 }
 // 合并matrix3d
-function mergeMatrix3ds (matrix3ds, origin = [x = 0, y = 0, z = 0]) {
+function mergeMatrix3ds (matrix3ds, origin = [0, 0, 0], dimension) {
   // 设置 transform-origin
   matrix3ds.forEach((matrix3d, index) => {
-    matrix3ds[index] = setTransformOrigin(matrix3d, origin)
+    matrix3ds[index] = setTransformOrigin(matrix3d, origin, dimension)
   })
   // 返回合成值
   return matrix3dBy(...matrix3ds)
@@ -274,7 +283,7 @@ export const transformFunctions = {
 const transformCache = {}
 
 // 将 transformStr 转成 React Native 的 matrix3d
-export default function transform (pattern, originStr) {
+export default function transform (pattern, originStr, dimension) {
   if (!transformCache[pattern]) {
     const transformStrList = pattern
       .replace(/^\s+|\s+$/g, '')
@@ -301,7 +310,7 @@ export default function transform (pattern, originStr) {
     )
     // 合并 matrix3ds
     const matrix = createCSS3Matrix3d(
-      ...mergeMatrix3ds(matrix3ds, origin)
+      ...mergeMatrix3ds(matrix3ds, origin, dimension)
     )
     transformCache[pattern] = [{ matrix }]
   }
