@@ -361,13 +361,13 @@ function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
   const nthList = {
     '#key': genKey()
   }
-  // 待合并的样式
-  const extendStyle = {}
   // 支持多层嵌套
   const names = Object.keys(newStyle)
   while (names.length) {
     const name = names.pop()
     const style = newStyle[name]
+    // 待合并的样式
+    const extendStyle = {}
     // transform-origin
     const { transformOrigin = null } = style
     delete style.transformOrigin
