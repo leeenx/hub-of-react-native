@@ -515,7 +515,10 @@ border.parseArg = function (argStr) {
         value = parseRGBA(value)
       }
     } else {
-      value = Number(value) || value
+      value = (
+        value === '0' ?
+          0 : Number(value) || value
+      )
     }
     return value
   })
@@ -860,11 +863,11 @@ function parseRGB (str) {
 
 // 由 'rgba(#rgb, a)' 转换成 rgba('#rgb', a)
 function parseRGBA (str) {
-const [hex, opacity] = str.replace(/rgba\(|\)/g, '').split(/\,\s*/)
+  const [hex, opacity] = str.replace(/rgba\(|\)/g, '').split(/\,\s*/)
   if (isHexRGBA(hex)) {
     return rgba(hex)
   }
-  return rgba(hex, opacity)
+  return rgba(hex, Number(opacity) || 1)
 }
 
 // 判断是不是颜色值
