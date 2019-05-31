@@ -133,7 +133,7 @@ function createStyleNames (nthList, css) {
       }
     })
     return [
-      nth.query(nthList, css, ...styleNames),
+      ...nth.query(nthList, css, ...styleNames),
       inlineStyle
     ]
   }
@@ -399,11 +399,13 @@ function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
       } else if (key.indexOf('&') === 0) {
         // 将 & 生成的新样式名外移到 newStyle 上
         const newName = name + key.replace('&', '')
+        // 因为是无限层级，所以要防对象耦合
+        const value = {...style[key]}
         if (newStyle[newName]) {
           // 有同名样式，合并样式
           Object.assign(
             newStyle[newName],
-            style[key]
+            value
           )
           if (names.includes(key) === false) {
             // newStyle[newName] 已被解析过，需要再次解析
@@ -411,7 +413,7 @@ function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
           }
         } else {
           // 直接生成新样式
-          newStyle[newName] = style[key]
+          newStyle[newName] = value
           names.push(newName)
         }
         // 删除 & 样式
