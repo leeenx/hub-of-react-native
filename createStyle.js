@@ -150,6 +150,10 @@ genKey.count = 0
 function genTest (pattern) {
   const reg = /(^\-?\d+n?|^\d*n)(\-|\+(\d+n?|\d*n))*$/
   if (reg.test(pattern)) {
+    if (!isNaN(Number(pattern))) {
+      // 字符串的数字
+      pattern = Number(pattern)
+    }
     if (typeof pattern === 'number') {
       return index => index === pattern
     } 
@@ -372,16 +376,26 @@ function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
     const { transformOrigin = null } = style
     delete style.transformOrigin
     for (const key in style) {
-      if (key.indexOf(':nth-child-') === 0) {
+      if (
+        key.indexOf('&:nth-child') === 0 ||
+        key.indexOf(':nth-child-') === 0
+      ) {
         // 将 nth-child 的样式外移到 newStyle 上
         const nthChildStyle = style[key]
         delete style[key]
+        if (key.indexOf('&:nth-child') === 0) {
+          // nth-child 扩展
+          const nthChildParam = key.replace(/\&\:nth\-child\(|\)/g, '')
+          // 替换成真正的 nth-child 类名
+          key = nth(nthChildParam)
+        }
         // 按 styleName 来存储 nthList
         if (!nthList[name]) {
           nthList[name] = []
         }
         nthList[name].push(nth.map[key])
         newStyle[key] = nthChildStyle
+        names.push(key)
       } else if (key.indexOf('&') === 0) {
         // 将 & 生成的新样式名外移到 newStyle 上
         const newName = name + key.replace('&', '')
@@ -539,7 +553,9 @@ function borderWidth (...arg) {
     borderLeftWidth
   }
 }
-borderWidth.parseArg = margin.parseArg
+borderWidth.parseArg = function (...arg) {
+  return margin.parseArg(...arg)
+}
 
 // 处理 borderColor
 function borderColor (...arg) {
