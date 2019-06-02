@@ -188,7 +188,7 @@ function setTransformOrigin (matrix3d, [ x = 0, y = x, z = 0 ], { width, height 
     typeof width !== 'number' ||
     typeof height !== 'number'
   ) {
-    console.error('can set transform-origin! expect number type of width/height')
+    console.error('can set transform-origin! Make sure width/height widthout %')
   }
   [x, y] = [x - width / 2, y - height / 2]
   const [
@@ -290,6 +290,7 @@ export default function transform (pattern, originStr, dimension) {
       .replace(/\,\s+/, ',')
       .replace(/\s+\(/, ')')
       .split(/\s+/)
+    const { width, height } = dimension
     const matrix3ds = transformStrList.map(transformStr => {
       const index1 = transformStr.indexOf('(')
       const index2 = transformStr.indexOf(')')
@@ -300,7 +301,21 @@ export default function transform (pattern, originStr, dimension) {
         z = '0',
         angle = '0'
       ] = transformStr.substring(index1 + 1, index2).split(',')
-      return transformFunToMatrix3d(transformFunName, [x, y, z, angle])
+      const transformParams = [x, y, z, angle]
+      // translate 系列支持 % 单位
+      if (x.indexOf('%') > 0) {
+        if (typeof width === 'string' && width.indexOf('%')) {
+          console.error('can set translateX! Make sure width widthout %')
+        }
+        transformParams[0] = parseFloat(x) * width / 100
+      }
+      if (y.indexOf('%') > 0) {
+        if (typeof height === 'string' && height.indexOf('%') > 0) {
+          console.error('can set translateY! Make sure height widthout %')
+        }
+        transformParams[1] = parseFloat(y) * height / 100
+      }
+      return transformFunToMatrix3d(transformFunName, transformParams)
     })
     // origin
     const origin = (
