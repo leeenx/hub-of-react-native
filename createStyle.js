@@ -226,13 +226,14 @@ function createLayoutManager (css) {
       layouts(...argList)
     } else {
       const layout = arg.join('&')
-      css[layout] = css[layout] || {}
-      const layoutStyle = css[layout]
+      let layoutStyle = css[layout]
       const {
         rawStyles,
         rawStyleSnap
       } = css
       if (!layoutStyle) {
+        layoutStyle = {}
+        css[layout] = layoutStyle
         // 新增一个 layoutStyle
         addLayoutStyle({
           css: css[layout],
