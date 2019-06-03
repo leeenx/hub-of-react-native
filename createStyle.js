@@ -188,11 +188,18 @@ function genTest (pattern) {
         a = operatorAdd(
           a,
           operator,
-          parseInt(component)
+          (
+            component === 'n' ? 1 : parseInt(component)
+          )
         )
       }
     }
-    return index => (index - b) % a === 0
+    return index => {
+      if (index - b < 0) {
+        return false
+      }
+      return (index - b) % a === 0
+    }
   } else {
     // 样本格式不正确
     console.error('error pattern')
@@ -206,47 +213,39 @@ function operatorAdd (num1, operator, num2) {
   return num1 - num2
 }
 
-// 添加原料快照
-function addStyleSnap (snap, layoutStyle) {
-  const { layout = 'common' } = layoutStyle
-  snap[layout] = layoutStyle
-}
-
 // 布局管理 
 function createLayoutManager (css) {
   let currentLayout = css.common
   const layouts = (...arg) => {
-    const argMap = arg[0]
     const argList = []
-    if (typeof argMap === 'object') {
-      for (const key in argMap) {
-        const value = argMap[key]
-        value && argList.push(key)
+    arg.forEach(item => {
+      if (typeof item === 'string') {
+        argList.push(item)
+      } else if (typeof item === 'object') {
+        // 需要展开
+        for (const key in item) {
+          const value = item[key]
+          value && argList.push(key)
+        }
       }
-      layouts(...argList)
-    } else {
-      const layout = arg.join('&')
-      let layoutStyle = css[layout]
-      const {
+    })
+    const layout = argList.join('&')
+    let layoutStyle = css[layout]
+    const { rawStyles, rawSnap } = css
+    if (!layoutStyle) {
+      css[layout] = layoutStyle
+      // 新增一个 layoutStyle
+      layoutStyle = addLayoutStyle({
+        css: css[layout],
         rawStyles,
-        rawStyleSnap
-      } = css
-      if (!layoutStyle) {
-        layoutStyle = {}
-        css[layout] = layoutStyle
-        // 新增一个 layoutStyle
-        addLayoutStyle({
-          css: css[layout],
-          rawStyles,
-          rawStyleSnap,
-          layoutStyle: {
-            layout,
-            '@extendLayouts': arg
-          }
-        })
-      }
-      currentLayout = layoutStyle
+        rawSnap,
+        rawStyle: {
+          layout,
+          '@extendLayouts': argList
+        }
+      })
     }
+    currentLayout = layoutStyle
   }
   const styleNames = (...arg) => currentLayout.styleNames(...arg)
   return {
@@ -288,15 +287,40 @@ function compositeLayout (...layoutStyles) {
 // 新增 layoutStyle
 function addLayoutStyle ({
   css = {},
-  layoutStyle,
   rawStyles,
-  rawStyleSnap
+  rawSnap,
+  rawStyle
 }) {
-  const { layout } = layoutStyle
+  const { layout } = rawStyle
   if (layout) {
-    rawStyles.push(layoutStyle)
-    rawStyleSnap[layout] = layoutStyle
-    generateStyle({ css, layoutStyle, rawStyleSnap })
+    rawStyles.push(rawStyle)
+    // rawStyles 只有两个属性 layout & @extendLayouts
+    const extendLayouts = rawStyle['@extendLayouts'].map(
+      layout => rawSnap[layout]
+    )
+    let layoutStyle = compositeLayout(
+      {},
+      ...extendLayouts
+    )
+    rawSnap[layout] = Object.assign(
+      {},
+      layoutStyle
+    )
+    layoutStyle = compositeLayout(
+      {},
+      rawSnap.common,
+      layoutStyle
+    )
+    const nthList = layoutStyle['@nth-list']
+    delete layoutStyle['@nth-list']
+    css[layout] = css[layout] || {}
+    return Object.assign(
+      css[layout],
+      StyleSheet.create(layoutStyle),
+      {
+        styleNames: createStyleNames(nthList, css[layout])
+      }
+    )
   }
 }
 
@@ -306,29 +330,56 @@ function generateStyles ({ css = {}, styles }) {
   const rawStyles = (
     styles instanceof Array ? styles : [styles]
   )
-  // 将 styles 拍平
-  const flatStyles = []
   // 原料快照
-  const rawStyleSnap = {}
-  rawStyles.forEach(rawStyle => {
-    rawStyle = (
-      typeof rawStyle === 'function' ? rawStyle() : rawStyle
-    )
-    if (rawStyle instanceof Array) {
-      rawStyle.forEach(layoutStyle => {
-        addStyleSnap(rawStyleSnap, layoutStyle)
-        flatStyles.push(layoutStyle)
-      })
-    } else {
-      addStyleSnap(rawStyleSnap, rawStyle)
-      flatStyles.push(rawStyle)
-    }
+  const rawSnap = {}
+  // 如果 styles 是 function 先执行一次
+  if (typeof styles === 'function') {
+    styles = styles()
+  }
+  // 强制 styles 是一个数组
+  if (styles instanceof Array === false) {
+    styles = [styles]
+  }
+  // 快照
+  const styleSnap = {}
+  styles.forEach(style => {
+    const { layout = 'common' } = style
+    const snap = { ...style }
+    // 删除 layout & @extendLayouts
+    delete snap.layout
+    delete snap['@extendLayouts']
+    styleSnap[layout] = generateStyle(snap)
+    return styleSnap[layout]
   })
-  // 生成目标样式
-  flatStyles.forEach(layoutStyle => {
-    const { layout = 'common' } = layoutStyle
+  // 继承
+  styles.forEach(style => {
+    const { layout = 'common' } = style
+    const extendLayouts = style['@extendLayouts'] || []
+    let layoutStyle = compositeLayout(
+      {},
+      ...extendLayouts.map(layout => styleSnap[layout]),
+      styleSnap[layout],
+    )
+    rawSnap[layout] = Object.assign(
+      {},
+      layoutStyle
+    )
+    // 与 common 样式合并
+    layoutStyle = compositeLayout(
+      {},
+      styleSnap.common,
+      layoutStyle
+    )
+    const nthList = layoutStyle['@nth-list']
+    delete layoutStyle['@nth-list']
     css[layout] = css[layout] || {}
-    generateStyle({ css: css[layout], layoutStyle, rawStyleSnap })
+    Object.assign(
+      css[layout],
+      StyleSheet.create(layoutStyle),
+      {
+        styleNames: createStyleNames(nthList, css[layout])
+      }
+    )
   })
   const {
     layouts,
@@ -339,7 +390,7 @@ function generateStyles ({ css = {}, styles }) {
     css,
     {
       rawStyles,
-      rawStyleSnap,
+      rawSnap,
       layouts,
       styleNames
     }
@@ -348,29 +399,16 @@ function generateStyles ({ css = {}, styles }) {
 }
 
 // 生成一个样式
-function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
-  const commonStyle = rawStyleSnap.common
-  const extendLayoutNames = layoutStyle['@extendLayouts'] || []
-  const extendLayouts = extendLayoutNames.map(
-    layout => rawStyleSnap[layout]
-  )
-  const newStyle = compositeLayout(
-    {},
-    commonStyle,
-    ...extendLayouts,
-    layoutStyle
-  )
-  // 删除 @extendLayouts
-  delete newStyle['@extendLayouts']
+function generateStyle (layoutStyle) {
   // nth-child 功能
   const nthList = {
     '#key': genKey()
   }
   // 支持多层嵌套
-  const names = Object.keys(newStyle)
+  const names = Object.keys(layoutStyle)
   while (names.length) {
     const name = names.pop()
-    const style = newStyle[name]
+    const style = layoutStyle[name]
     // 待合并的样式
     const extendStyle = {}
     // transform-origin
@@ -381,7 +419,7 @@ function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
         key.indexOf('&:nth-child') === 0 ||
         key.indexOf(':nth-child-') === 0
       ) {
-        // 将 nth-child 的样式外移到 newStyle 上
+        // 将 nth-child 的样式外移到 layoutStyle 上
         const nthChildStyle = style[key]
         delete style[key]
         if (key.indexOf('&:nth-child') === 0) {
@@ -395,26 +433,26 @@ function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
           nthList[name] = []
         }
         nthList[name].push(nth.map[key])
-        newStyle[key] = nthChildStyle
+        layoutStyle[key] = nthChildStyle
         names.push(key)
       } else if (key.indexOf('&') === 0) {
-        // 将 & 生成的新样式名外移到 newStyle 上
+        // 将 & 生成的新样式名外移到 layoutStyle 上
         const newName = name + key.replace('&', '')
         // 因为是无限层级，所以要防对象耦合
         const value = {...style[key]}
-        if (newStyle[newName]) {
+        if (layoutStyle[newName]) {
           // 有同名样式，合并样式
           Object.assign(
-            newStyle[newName],
+            layoutStyle[newName],
             value
           )
           if (names.includes(key) === false) {
-            // newStyle[newName] 已被解析过，需要再次解析
+            // layoutStyle[newName] 已被解析过，需要再次解析
             names.push(newName)
           }
         } else {
           // 直接生成新样式
-          newStyle[newName] = value
+          layoutStyle[newName] = value
           names.push(newName)
         }
         // 删除 & 样式
@@ -451,15 +489,9 @@ function generateStyle ({ css = {}, layoutStyle, rawStyleSnap }) {
       extendStyle
     )
   }
-
-  Object.assign(
-    css,
-    StyleSheet.create(newStyle),
-    {
-      styleNames: createStyleNames(nthList, css)
-    }
-  )
-  return css
+  // 把 nthList 当成一个特殊的属性存储
+  layoutStyle['@nth-list'] = nthList
+  return layoutStyle
 }
 
 function fourValue (one = 0, two = one, three = one, four = two) {
