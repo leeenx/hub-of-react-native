@@ -302,6 +302,15 @@ export default function transform (pattern, originStr, dimension) {
         angle = '0'
       ] = transformStr.substring(index1 + 1, index2).split(',')
       const transformParams = [x, y, z, angle]
+      // translate* 与 scale* 系列需要强制转换为数字类型
+      if (
+        transformFunName.indexOf('translate') === 0 ||
+        transformFunName.indexOf('scale') === 0
+      ) {
+        transformParams[0] = Number(x)
+        transformParams[1] = Number(y)
+        transformParams[2] = Number(z)
+      }
       // translate 系列支持 % 单位
       if (x.indexOf('%') > 0) {
         if (typeof width === 'string' && width.indexOf('%')) {
