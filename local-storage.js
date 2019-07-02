@@ -35,9 +35,8 @@ const storage = {
       AsyncStorage.clear()
     },
     getItem (key) {
-      const expiresKey = `@${key}`
       const value = this.data[key]
-      const expires = this.expires[expiresKey]
+      const expires = this.expires[key]
       if (expires === undefined || expires <= Date.now()) {
         // 没有 expires 信息表示需要删除
         setData(key, null)
@@ -63,6 +62,12 @@ const storage = {
         this.setItem(key, items[key])
       })
     }
+  },
+  handleReadyFuns: [],
+  ready (handleReady) {
+    storage.isReady ?
+      handleReady() :
+      storage.handleReadyFuns.push(handleReady)
   }
 }
 
@@ -78,11 +83,15 @@ function isEmpty (value) {
   )
 }
 
-function setData (key, value, expires) {
+function setData (key, value, expiresValue) {
   if (key.indexOf('@') === 0 || key.indexOf('#') === 0) {
     throw `${key} is an invalid key for LocalStorage! Please don't use @*/#* as key`
   }
-  const { data } = storage
+  const {
+    data,
+    expires,
+    modify
+  } = storage
   if (!data.hasOwnProperty(key) && !isEmpty(value)) {
     ++storage.length
     // 检查存储量
@@ -98,23 +107,25 @@ function setData (key, value, expires) {
   }
   const expiresKey = `@${key}`
   const modifyKey = `#${key}`
-  const modify = `${Date.now()}`
+  const modifyValue = `${Date.now()}`
   if (!isEmpty(value)) { // 赋值
     // 存值
     data[key] = value
     // 存有效期
-    data[expiresKey] = expires
+    expires[key] = expiresValue
     // 存更新时间
-    data[modifyKey] = modify
+    modify[key] = modifyValue
     AsyncStorage.multiSet([
       [key, value],
-      [expiresKey, expires],
-      [modifyKey, modify]
+      [expiresKey, expiresValue],
+      [modifyKey, modifyValue]
     ])
+    console.log(value)
   } else { // 删除
-    delete storage.data[key]
-    delete storage.expires[expiresKey]
-    delete storage.modify[modifyKey]
+    console.log('delete', key, value)
+    delete data[key]
+    delete expires[key]
+    delete modify[key]
     AsyncStorage.multiRemove([
       key,
       expiresKey,
@@ -126,6 +137,7 @@ function setData (key, value, expires) {
 function checkLocalStorage () {
   const count = storage.length
   const { size } = config
+  console.log(count, size)
   if (count >= size) {
     // 达到存储量
     console.warn('LocalStorage is full!')
@@ -143,30 +155,24 @@ function checkLocalStorage () {
   }
 }
 
-// 获取所有的数据
-AsyncStorage.getAllKeys().then(
-  keys => {
-    new Promise(resolve => {
-      resolve(
-        keys.length ?
-          AsyncStorage.multiGet(keys) :
-          resolve([])
+AsyncStorage.getAllKeys().then(keys => 
+  keys.length ? AsyncStorage.multiGet(keys) : []
+).then(
+  data => {
+    // 数据长度
+    const count = data.length
+    if (count > 0) {
+      Object.assign(
+        storage,
+        parseStorageData(data)
       )
-    }).then(
-      data => {
-        // 数据长度
-        const count = data.length
-        if (count > 0) {
-          Object.assign(
-            storage,
-            parseStorageData(data)
-          )
-        }
-        Object.keys(storage.methods).forEach(key => {
-          storage[key] = storage.methods[key]
-        })
-      }
-    )
+    }
+    Object.keys(storage.methods).forEach(key => {
+      storage[key] = storage.methods[key]
+    })
+    storage.isReady = true
+    storage.handleReadyFuns.forEach(handleReady => handleReady())
+    storage.handleReadyFuns.length = 0
   }
 )
 function parseStorageData (data) {
@@ -175,9 +181,9 @@ function parseStorageData (data) {
   const storageModify = {}
   data.forEach(([key, value]) => {
     if (key.indexOf('@') === 0) {
-      storageExpires[key] = value
+      storageExpires[key.replace('@', '')] = value
     } else if (key.indexOf('#') === 0) {
-      storageModify[key] = value
+      storageModify[key.replace('#', '')] = value
     } else {
       storageData[key] = value
     }
