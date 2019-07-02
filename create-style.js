@@ -56,13 +56,16 @@ nth.query = (nthList, css, ...args) => {
   let styles = []
   const len = args.length
   const lastIndex = len - 1
+  const secondLastIndex = lastIndex - 1
   const last = Number(args[lastIndex])
+  const secondLast = Number(args[secondLastIndex])
   if (isNaN(last)) {
     // 没有 nthChild 扩展
     styles = args.map(styleName => css[styleName])
   } else {
     // 使用 css 的索引标准
-    const index = last + 1
+    const index = secondLast + 1
+    const total = last
     // 将 index 从 args 中移除
     args.pop()
     const styleNames = args
@@ -72,7 +75,7 @@ nth.query = (nthList, css, ...args) => {
         // 存在 nthChild 扩展
         nthList[styleName].forEach(
           ({ test, styleName }) => {
-            if (test(index)) {
+            if (test(index, total)) {
               // 与 nthChild 匹配
               styles.push(css[styleName])
             }
@@ -85,12 +88,17 @@ nth.query = (nthList, css, ...args) => {
   return styles
 }
 
-// 生成 styleNames 方法
+/**
+ * 生成 styleNames 方法
+ * 返回的 styleNames 如果传入的参数为 object
+ * 有两个特殊的名字：@index 和 @total，分别表示元素的索引值和子元素总数
+ */
 function createStyleNames (nthList, css) {
   return (...arg) => {
     const styleNames = []
     let inlineStyle = {}
     let nthChildIndex = -1
+    let nthChildTotal = -1
     arg.forEach(styleName => {
       if (
         typeof styleName === 'string' ||
@@ -102,7 +110,8 @@ function createStyleNames (nthList, css) {
         const firstKey = keys[0]
         const firstValue = styleName[firstKey]
         if (
-          firstKey === 'index' ||
+          firstKey === '@index' ||
+          firstKey === '@total' ||
           (
             // includeFontPadding 是 React Native 样式中唯一个 bool 类型的样式
             firstKey !== 'includeFontPadding' &&
@@ -115,11 +124,11 @@ function createStyleNames (nthList, css) {
           // 正常的 styleName
           keys.forEach(key => {
             const value = styleName[key]
-            if (key === 'index') {
+            if (key === '@index') {
               nthChildIndex = value
-              return
-            }
-            if (typeof value === 'boolean' && value) {
+            } else if (key === '@total') {
+              nthChildTotal = value
+            } else if (typeof value === 'boolean' && value) {
               styleNames.push(key)
             }
           })
@@ -129,9 +138,22 @@ function createStyleNames (nthList, css) {
         }
       }
       if (nthChildIndex >= 0) {
-        styleNames.push(nthChildIndex)
+        styleNames.push(nthChildIndex, nthChildTotal)
       }
     })
+    // 如果 styleNames 的长度>=2，需要判断是否有 nthChildIndex
+    const len = styleNames.length
+    if (len >= 2) {
+      const lastIndex = len - 1
+      const secondLastIndex = lastIndex - 1
+      if (
+        typeof styleNames[lastIndex] === 'number' &&
+        typeof styleNames[secondLastIndex] !== 'number'
+      ) {
+        // 表示只有 nthChildIndex，需要强补一个 nthChildTotal
+        styleNames.push(nthChildTotal)
+      }
+    }
     return [
       ...nth.query(nthList, css, ...styleNames),
       inlineStyle
@@ -200,7 +222,10 @@ function genTest (pattern) {
       }
       return (index - b) % a === 0
     }
-  } else {
+  } else if (pattern === 'last') {
+    // last-child
+    return (index, total) => total - index === 0
+  }else {
     // 样本格式不正确
     console.error('error pattern')
   }
@@ -414,14 +439,21 @@ function generateStyle (layoutStyle) {
     // transform-origin
     const { transformOrigin = null } = style
     delete style.transformOrigin
-    for (const key in style) {
+    for (let key in style) {
       if (
         key.indexOf('&:nth-child') === 0 ||
-        key.indexOf(':nth-child-') === 0
+        key.indexOf(':nth-child-') === 0 ||
+        key === '&:first-child' ||
+        key === '&:last-child'
       ) {
         // 将 nth-child 的样式外移到 layoutStyle 上
         const nthChildStyle = style[key]
         delete style[key]
+        if (key === '&:first-child') {
+          key = '&:nth-child(1)'
+        } else if (key === '&:last-child') {
+          key = '&:nth-child(last)'
+        }
         if (key.indexOf('&:nth-child') === 0) {
           // nth-child 扩展
           const nthChildParam = key.replace(/\&\:nth\-child\(|\)/g, '')
