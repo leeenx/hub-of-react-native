@@ -1,199 +1,1073 @@
 /**
- * @author: lienxin
- * @description: 使用 AsyncStorage 模拟 localStorage
+ * @author lienxin
+ * @description 创建样式的统一方法
  */
 
-import { AsyncStorage } from 'react-native'
+import {
+  DeviceInfo,
+  Dimensions,
+  StatusBar,
+  StyleSheet,
+  Platform
+} from 'react-native'
 
-// 参数匹配
-const config = {
-  // 最大存储量，默认 1000
-  size: 1000,
-  // 单位毫秒，默认 30 天
-  expires: 30 * 24 * 60 * 60 * 1000
-}
-// 设置 config
-export function setConfig (nextConfig) {
-  Object.assign(config, nextConfig)
-}
-// 未初始化提示
-function uninitial () {
-  console.warn('error, localStorage is not initial!')
-}
-const storage = {
-  length: 0,
-  data: {},
-  expires: {},
-  modify: {},
-  methods: {
-    // 清空缓存
-    clear () {
-      this.data = {}
-      this.expires = {}
-      this.modify = {}
-      this.length = 0
-      AsyncStorage.clear()
-    },
-    getItem (key) {
-      const value = this.data[key]
-      const expires = this.expires[key]
-      if (expires === undefined || expires <= Date.now()) {
-        // 没有 expires 信息表示需要删除
-        setData(key, null)
-        return null
-      }
-      return value
-    },
-    removeItem (key) {
-      setData(key, null)
-    },
-    setItem (
-      key,
-      value,
-      expires = config.expires
-    ) {
-      if (typeof value !== 'string') {
-        value = value.toString()
-      }
-      setData(key, value, `${expires + Date.now()}`)
-    },
-    setItems (items) {
-      Object.keys(items).forEach(key => {
-        this.setItem(key, items[key])
-      })
+import transform from './transform'
+
+const LANDSCAPE = 'landscape'
+const PORTRAIT = 'portrait'
+const { isIPhoneX_deprecated } = DeviceInfo
+// 状态栏高度
+let statusBarHeight = StatusBar.currentHeight
+const setStatusBarHeight = () => {
+  if (Platform.OS === 'ios') {
+    if (isIPhoneX_deprecated && getOrientation() === PORTRAIT) {
+      // iPhoneX
+      statusBarHeight = 44
+    } else {
+      statusBarHeight = 20
     }
-  },
-  handleReadyFuns: [],
-  ready (handleReady) {
-    storage.isReady ?
-      handleReady() :
-      storage.handleReadyFuns.push(handleReady)
+  }
+}
+function getOrientation () {
+  const { width, height } = Dimensions.get('window')
+  return width > height ? LANDSCAPE : PORTRAIT
+}
+
+// nth-child函数
+function nth (pattern) {
+  const index = nth.count++
+  const styleName = `:nth-child-${index}`
+  nth.map[styleName] = {
+    styleName,
+    test: genTest(pattern)
+  }
+  return `:nth-child-${index}`
+}
+// 表示 nth-child 的 classname 的集合
+nth.map = []
+// 缓存
+nth.cache = {}
+nth.count = 0
+nth.query = (nthList, css, ...args) => {
+  const cacheKey = `${nthList['#key']}|${args.join('|')}`
+  const cache = nth.cache[cacheKey]
+  if (cache) return cache
+  // 要返回的 styles 数组
+  let styles = []
+  const len = args.length
+  const lastIndex = len - 1
+  const secondLastIndex = lastIndex - 1
+  const last = Number(args[lastIndex])
+  const secondLast = Number(args[secondLastIndex])
+  if (isNaN(last)) {
+    // 没有 nthChild 扩展
+    styles = args.map(styleName => css[styleName])
+  } else {
+    // 使用 css 的索引标准
+    const index = secondLast + 1
+    const total = last
+    // 将 index 从 args 中移除
+    args.pop()
+    const styleNames = args
+    styleNames.forEach(styleName => {
+      styles.push(css[styleName])
+      if (nthList[styleName]) {
+        // 存在 nthChild 扩展
+        nthList[styleName].forEach(
+          ({ test, styleName }) => {
+            if (test(index, total)) {
+              // 与 nthChild 匹配
+              styles.push(css[styleName])
+            }
+          }
+        )
+      }
+    })
+  }
+  nth.cache[cacheKey] = styles
+  return styles
+}
+
+/**
+ * 生成 styleNames 方法
+ * 返回的 styleNames 如果传入的参数为 object
+ * 有两个特殊的名字：@index 和 @total，分别表示元素的索引值和子元素总数
+ */
+function createStyleNames (nthList, css) {
+  return (...arg) => {
+    const styleNames = []
+    let inlineStyle = {}
+    let nthChildIndex = -1
+    let nthChildTotal = -1
+    arg.forEach(styleName => {
+      if (
+        typeof styleName === 'string' ||
+        typeof styleName === 'number'
+      ) {
+        styleNames.push(styleName)
+      } else if (typeof styleName === 'object') {
+        const keys = Object.keys(styleName)
+        const firstKey = keys[0]
+        const firstValue = styleName[firstKey]
+        if (
+          firstKey === '@index' ||
+          firstKey === '@total' ||
+          (
+            // includeFontPadding 是 React Native 样式中唯一个 bool 类型的样式
+            firstKey !== 'includeFontPadding' &&
+            (
+              typeof firstValue === 'boolean' ||
+              typeof firstValue === 'undefined'
+            )
+          )
+        ) {
+          // 正常的 styleName
+          keys.forEach(key => {
+            const value = styleName[key]
+            if (key === '@index') {
+              nthChildIndex = value
+            } else if (key === '@total') {
+              nthChildTotal = value
+            } else if (typeof value === 'boolean' && value) {
+              styleNames.push(key)
+            }
+          })
+        } else {
+          // 内联 style 对象
+          inlineStyle = styleName
+        }
+      }
+      if (nthChildIndex >= 0) {
+        styleNames.push(nthChildIndex, nthChildTotal)
+      }
+    })
+    // 如果 styleNames 的长度>=2，需要判断是否有 nthChildIndex
+    const len = styleNames.length
+    if (len >= 2) {
+      const lastIndex = len - 1
+      const secondLastIndex = lastIndex - 1
+      if (
+        typeof styleNames[lastIndex] === 'number' &&
+        typeof styleNames[secondLastIndex] !== 'number'
+      ) {
+        // 表示只有 nthChildIndex，需要强补一个 nthChildTotal
+        styleNames.push(nthChildTotal)
+      }
+    }
+    return [
+      ...nth.query(nthList, css, ...styleNames),
+      inlineStyle
+    ]
   }
 }
 
-// 未初始化
-Object.keys(storage.methods).forEach(key => {
-  storage[key] = uninitial
-})
+// 生成一个不会重复的 key 值
+export function genKey () {
+  return `${Date.now()}-${genKey.count++}`
+}
 
-function isEmpty (value) {
-  return (
-    value === undefined ||
-    value === null
+genKey.count = 0
+
+// 生成检验 pattern 和 test 方法
+function genTest (pattern) {
+  const reg = /(^\-?\d+n?|^\d*n)(\-|\+(\d+n?|\d*n))*$/
+  if (reg.test(pattern)) {
+    if (!isNaN(Number(pattern))) {
+      // 字符串的数字
+      pattern = Number(pattern)
+    }
+    if (typeof pattern === 'number') {
+      return index => index === pattern
+    } 
+    // 运算符
+    const operators = pattern.split(/\d*n|\d+n?/)
+    // 数字
+    const components = pattern.split(/\+|\-/)
+    // 剔除头尾无效的运算符
+    operators[0] === '' && operators.shift()
+    operators[operators.length - 1] === '' &&
+    operators.pop()
+    // 剔除第一个无效数字
+    components[0] === '' && components.shift()
+    // 保证第一个 components 都带[+, -]
+    if (operators.length < components.length) {
+      operators.unshift('+')
+    }
+    // 将 pattern 合并成标准格式：an + b
+    let a = 0
+    let b = 0
+    for (let i = 0; i < components.length; ++i) {
+      const operator = operators[i]
+      const component = components[i]
+      const sum = operatorAdd(
+        b,
+        operator,
+        Number(component)
+      )
+      if (!isNaN(sum)) {
+        b = sum
+      } else {
+        a = operatorAdd(
+          a,
+          operator,
+          (
+            component === 'n' ? 1 : parseInt(component)
+          )
+        )
+      }
+    }
+    return index => {
+      if (index - b < 0) {
+        return false
+      }
+      return (index - b) % a === 0
+    }
+  } else if (pattern === 'last') {
+    // last-child
+    return (index, total) => total - index === 0
+  }else {
+    // 样本格式不正确
+    console.error('error pattern')
+  }
+}
+// 加减操作
+function operatorAdd (num1, operator, num2) {
+  if (operator === '+') {
+    return num1 + num2
+  }
+  return num1 - num2
+}
+
+// 布局管理 
+function createLayoutManager (css) {
+  let currentLayout = css.common
+  const layouts = (...arg) => {
+    const argList = []
+    arg.forEach(item => {
+      if (typeof item === 'string') {
+        argList.push(item)
+      } else if (typeof item === 'object') {
+        // 需要展开
+        for (const key in item) {
+          const value = item[key]
+          value && argList.push(key)
+        }
+      }
+    })
+    const layout = argList.join('&')
+    let layoutStyle = css[layout]
+    const { rawStyles, rawSnap } = css
+    if (!layoutStyle) {
+      css[layout] = layoutStyle
+      // 新增一个 layoutStyle
+      layoutStyle = addLayoutStyle({
+        css: css[layout],
+        rawStyles,
+        rawSnap,
+        rawStyle: {
+          layout,
+          '@extendLayouts': argList
+        }
+      })
+    }
+    currentLayout = layoutStyle || {}
+  }
+  const styleNames = (...arg) => currentLayout.styleNames(...arg)
+  return {
+    layouts,
+    styleNames
+  }
+}
+
+// layout 复合
+function compositeLayout (...layoutStyles) {
+  const len = layoutStyles.length
+  const targetLayout = layoutStyles[0]
+  for (let i = 1; i < len; ++i) {
+    const layoutStyle = layoutStyles[i]
+    for (const key in layoutStyle) {
+      const value = layoutStyle[key]
+      if (key === 'layout') {
+        // layout 保持不变 
+        continue
+      }
+      if (targetLayout[key]) {
+        // 样式合并
+        Object.assign(
+          targetLayout[key],
+          value
+        )
+      } else {
+        // 新增
+        targetLayout[key] = Object.assign(
+          {},
+          value
+        )
+      }
+    }
+  }
+  return targetLayout
+}
+
+// 新增 layoutStyle
+function addLayoutStyle ({
+  css = {},
+  rawStyles,
+  rawSnap,
+  rawStyle
+}) {
+  const { layout } = rawStyle
+  if (layout) {
+    rawStyles.push(rawStyle)
+    // rawStyles 只有两个属性 layout & @extendLayouts
+    const extendLayouts = rawStyle['@extendLayouts'].map(
+      layout => rawSnap[layout]
+    )
+    let layoutStyle = compositeLayout(
+      {},
+      ...extendLayouts
+    )
+    rawSnap[layout] = Object.assign(
+      {},
+      layoutStyle
+    )
+    layoutStyle = compositeLayout(
+      {},
+      rawSnap.common,
+      layoutStyle
+    )
+    const nthList = layoutStyle['@nth-list']
+    delete layoutStyle['@nth-list']
+    css[layout] = css[layout] || {}
+    return Object.assign(
+      css[layout],
+      StyleSheet.create(layoutStyle),
+      {
+        styleNames: createStyleNames(nthList, css[layout])
+      }
+    )
+  }
+}
+
+// 生成一组样式
+function generateStyles ({ css = {}, styles }) {
+  // 强制原料样式必须是一个数组
+  const rawStyles = (
+    styles instanceof Array ? styles : [styles]
+  )
+  // 原料快照
+  const rawSnap = {}
+  // 如果 styles 是 function 先执行一次
+  if (typeof styles === 'function') {
+    styles = styles()
+  }
+  // 强制 styles 是一个数组
+  if (styles instanceof Array === false) {
+    styles = [styles]
+  }
+  // 快照
+  const styleSnap = {}
+  styles.forEach(style => {
+    const { layout = 'common' } = style
+    const snap = { ...style }
+    // 删除 layout & @extendLayouts
+    delete snap.layout
+    delete snap['@extendLayouts']
+    styleSnap[layout] = generateStyle(snap)
+    return styleSnap[layout]
+  })
+  // 继承
+  styles.forEach(style => {
+    const { layout = 'common' } = style
+    const extendLayouts = style['@extendLayouts'] || []
+    let layoutStyle = compositeLayout(
+      {},
+      ...extendLayouts.map(layout => styleSnap[layout]),
+      styleSnap[layout],
+    )
+    rawSnap[layout] = Object.assign(
+      {},
+      layoutStyle
+    )
+    // 与 common 样式合并
+    layoutStyle = compositeLayout(
+      {},
+      styleSnap.common,
+      layoutStyle
+    )
+    const nthList = layoutStyle['@nth-list']
+    delete layoutStyle['@nth-list']
+    css[layout] = css[layout] || {}
+    Object.assign(
+      css[layout],
+      StyleSheet.create(layoutStyle),
+      {
+        styleNames: createStyleNames(nthList, css[layout])
+      }
+    )
+  })
+  const {
+    layouts,
+    styleNames
+  } = createLayoutManager(css)
+  // 挂载
+  Object.assign(
+    css,
+    {
+      rawStyles,
+      rawSnap,
+      layouts,
+      styleNames
+    }
+  )
+  return css
+}
+
+// 生成一个样式
+function generateStyle (layoutStyle) {
+  // nth-child 功能
+  const nthList = {
+    '#key': genKey()
+  }
+  // 支持多层嵌套
+  const names = Object.keys(layoutStyle)
+  while (names.length) {
+    const name = names.pop()
+    const style = layoutStyle[name]
+    // 待合并的样式
+    const extendStyle = {}
+    // transform-origin
+    const { transformOrigin = null } = style
+    delete style.transformOrigin
+    for (let key in style) {
+      if (
+        key.indexOf('&:nth-child') === 0 ||
+        key.indexOf(':nth-child-') === 0 ||
+        key === '&:first-child' ||
+        key === '&:last-child'
+      ) {
+        // 将 nth-child 的样式外移到 layoutStyle 上
+        const nthChildStyle = style[key]
+        delete style[key]
+        if (key === '&:first-child') {
+          key = '&:nth-child(1)'
+        } else if (key === '&:last-child') {
+          key = '&:nth-child(last)'
+        }
+        if (key.indexOf('&:nth-child') === 0) {
+          // nth-child 扩展
+          const nthChildParam = key.replace(/\&\:nth\-child\(|\)/g, '')
+          // 替换成真正的 nth-child 类名
+          key = nth(nthChildParam)
+        }
+        // 按 styleName 来存储 nthList
+        if (!nthList[name]) {
+          nthList[name] = []
+        }
+        nthList[name].push(nth.map[key])
+        layoutStyle[key] = nthChildStyle
+        names.push(key)
+      } else if (key.indexOf('&') === 0) {
+        // 将 & 生成的新样式名外移到 layoutStyle 上
+        const newName = name + key.replace('&', '')
+        // 因为是无限层级，所以要防对象耦合
+        const value = {...style[key]}
+        if (layoutStyle[newName]) {
+          // 有同名样式，合并样式
+          Object.assign(
+            layoutStyle[newName],
+            value
+          )
+          if (names.includes(key) === false) {
+            // layoutStyle[newName] 已被解析过，需要再次解析
+            names.push(newName)
+          }
+        } else {
+          // 直接生成新样式
+          layoutStyle[newName] = value
+          names.push(newName)
+        }
+        // 删除 & 样式
+        delete style[key]
+      } else if (key === 'transform') {
+        // tranform 扩展
+        const value = style[key]
+        // tranform 值为 string 时，表示它是扩展写法
+        if (typeof value === 'string') {
+          const { width, height } = style
+          style[key] = transform(
+            value,
+            transformOrigin,
+            { width, height }
+          )
+        }
+      } else if (typeof staticProps[key] === 'function') {
+        // 调用 staticProps 上的方法
+        const value = style[key]
+        const propFun = staticProps[key]
+        // 强制要求value是string
+        if (typeof value === 'string') {
+          delete style[key]
+          // 加到扩展样式中
+          Object.assign(
+            extendStyle,
+            propFun(...propFun.parseArg(value))
+          )
+        }
+      }
+    }
+    Object.assign(
+      style,
+      extendStyle
+    )
+  }
+  // 把 nthList 当成一个特殊的属性存储
+  layoutStyle['@nth-list'] = nthList
+  return layoutStyle
+}
+
+function fourValue (one = 0, two = one, three = one, four = two) {
+  return [one, two, three, four]
+}
+
+
+// 处理 margin
+function margin (...arg) {
+  const [
+    marginTop,
+    marginRight,
+    marginBottom,
+    marginLeft
+  ] = fourValue(...arg)
+  return {
+    marginTop,
+    marginRight,
+    marginBottom,
+    marginLeft
+  }
+}
+margin.parseArg = function (argStr) {
+  return argStr.split(/\s+/).map(
+    value => Number(value) || 0
   )
 }
 
-function setData (key, value, expiresValue) {
-  if (key.indexOf('@') === 0 || key.indexOf('#') === 0) {
-    throw `${key} is an invalid key for LocalStorage! Please don't use @*/#* as key`
-  }
-  const {
-    data,
-    expires,
-    modify
-  } = storage
-  if (!data.hasOwnProperty(key) && !isEmpty(value)) {
-    ++storage.length
-    // 检查存储量
-    checkLocalStorage()
-  } else if (
-    data.hasOwnProperty(key) &&
-    isEmpty(value)
-  ) { // 删除记录
-    --storage.length
-  } else if (isEmpty(value)) {
-    // 无效赋值
-    return
-  }
-  const expiresKey = `@${key}`
-  const modifyKey = `#${key}`
-  const modifyValue = `${Date.now()}`
-  if (!isEmpty(value)) { // 赋值
-    // 存值
-    data[key] = value
-    // 存有效期
-    expires[key] = expiresValue
-    // 存更新时间
-    modify[key] = modifyValue
-    AsyncStorage.multiSet([
-      [key, value],
-      [expiresKey, expiresValue],
-      [modifyKey, modifyValue]
-    ])
-    console.log(value)
-  } else { // 删除
-    console.log('delete', key, value)
-    delete data[key]
-    delete expires[key]
-    delete modify[key]
-    AsyncStorage.multiRemove([
-      key,
-      expiresKey,
-      modifyKey
-    ])
+// 处理 padding
+function padding (...arg) {
+  const [top, right, bottom, left] = fourValue(...arg)
+  return {
+    paddingTop: top,
+    paddingRight: right,
+    paddingBottom: bottom,
+    paddingLeft: left
   }
 }
+padding.parseArg = margin.parseArg
 
-function checkLocalStorage () {
-  const count = storage.length
-  const { size } = config
-  console.log(count, size)
-  if (count >= size) {
-    // 达到存储量
-    console.warn('LocalStorage is full!')
-    // 删除最久没有更新的缓存
-    let item = { modify: Infinity }
-    Object.keys(storage.modify).forEach(modifyKey => {
-      const modify = storage.modify[modifyKey]
-      if (item.modify > modify) {
-        const key = modifyKey.replace('#', '')
-        item.modify = modify,
-        item.key = key
-      }
-    })
-    item.key && storage.removeItem(item.key)
-  }
-}
-
-AsyncStorage.getAllKeys().then(keys => 
-  keys.length ? AsyncStorage.multiGet(keys) : []
-).then(
-  data => {
-    // 数据长度
-    const count = data.length
-    if (count > 0) {
-      Object.assign(
-        storage,
-        parseStorageData(data)
-      )
-    }
-    Object.keys(storage.methods).forEach(key => {
-      storage[key] = storage.methods[key]
-    })
-    storage.isReady = true
-    storage.handleReadyFuns.forEach(handleReady => handleReady())
-    storage.handleReadyFuns.length = 0
-  }
-)
-function parseStorageData (data) {
-  const storageData = {}
-  const storageExpires = {}
-  const storageModify = {}
-  data.forEach(([key, value]) => {
-    if (key.indexOf('@') === 0) {
-      storageExpires[key.replace('@', '')] = value
-    } else if (key.indexOf('#') === 0) {
-      storageModify[key.replace('#', '')] = value
-    } else {
-      storageData[key] = value
+// 处理 border
+function border (...arg) {
+  // 最多只有三个参数
+  if (arg.length > 3) arg.length = 3
+  let borderColor
+  let borderWidth = 1
+  arg.forEach(value => {
+    if (isColor(value)) {
+      borderColor = value
+    } else if (typeof value === 'number') {
+      borderWidth = value
+    } else if (isBorderStyle(value)) {
+      borderStyle = value
     }
   })
   return {
-    data: storageData,
-    expires: storageExpires,
-    modify: storageModify,
-    length: data.length / 3 >> 0
+    borderColor,
+    borderWidth,
+    borderStyle
+  }
+}
+border.parseArg = function (argStr) {
+  return argStr.replace(/\,\s+/g, ',').split(/\s+/).map(value => {
+    if (value.indexOf('#') > 0) {
+      if (isRGB(value)) {
+        // 表示是使用扩展的 rgb 方法
+        value = parseRGB(value)
+      } else if(isRGBA(value)) {
+        // 表示是使用扩展的 rgba 方法
+        value = parseRGBA(value)
+      }
+    } else {
+      value = (
+        value === '0' ?
+          0 : Number(value) || value
+      )
+    }
+    return value
+  })
+}
+
+// 处理 borderWidth
+function borderWidth (...arg) {
+  const [
+    borderTopWidth,
+    borderRightWidth,
+    borderBottomWidth,
+    borderLeftWidth
+  ] = fourValue(...arg)
+  return {
+    borderTopWidth,
+    borderRightWidth,
+    borderBottomWidth,
+    borderLeftWidth
+  }
+}
+borderWidth.parseArg = function (...arg) {
+  return margin.parseArg(...arg)
+}
+
+// 处理 borderColor
+function borderColor (...arg) {
+  const [
+    borderTopColor,
+    borderRightColor,
+    borderBottomColor,
+    borderLeftColor
+  ] = fourValue(...arg)
+  return {
+    borderTopColor,
+    borderRightColor,
+    borderBottomColor,
+    borderLeftColor
+  }
+}
+borderColor.parseArg = function (argStr) {
+  return argStr.replace(/\,\s+/g, ',').split(/\s+/).map(color => {
+    if (color.indexOf('#') > 0) {
+      if (isRGB(color)) {
+        // 表示是使用扩展的 rgb 方法
+        color = parseRGB(color)
+      } else if(isRGBA(color)) {
+        // 表示是使用扩展的 rgba 方法
+        color = parseRGBA(color)
+      }
+    }
+    return color
+  })
+}
+
+// 处理 borderRadius
+function borderRadius (...arg) {
+  const [
+    borderTopLeftRadius,
+    borderTopRightRadius,
+    borderBottomLeftRadius,
+    borderBottomRightRadius
+  ] = fourValue(...arg)
+  return {
+    borderTopLeftRadius,
+    borderTopRightRadius,
+    borderBottomLeftRadius,
+    borderBottomRightRadius
+  }
+}
+borderRadius.parseArg = margin.parseArg
+
+// borderTop
+function borderTop (...arg) {
+  // 最多只有三个参数
+  if (arg.length > 3) arg.length = 3
+  let borderTopColor
+  let borderTopWidth = 1
+  let borderStyle = 'solid'
+  arg.forEach(value => {
+    if (isColor(value)) {
+      borderTopColor = value
+    } else if (typeof value === 'number') {
+      borderTopWidth = value
+    } else if (isBorderStyle(value)) {
+      borderStyle = value
+    }
+  })
+  return {
+    borderTopColor,
+    borderTopWidth,
+    borderStyle
+  }
+}
+borderTop.parseArg = border.parseArg
+
+// borderRight
+function borderRight (...arg) {
+  // 最多只有三个参数
+  if (arg.length > 3) arg.length = 3
+  let borderRightColor
+  let borderRightWidth = 1
+  let borderStyle = 'solid'
+  arg.forEach(value => {
+    if (isColor(value)) {
+      borderRightColor = value
+    } else if (typeof value === 'number') {
+      borderRightWidth = value
+    } else if (isBorderStyle(value)) {
+      borderStyle = value
+    }
+  })
+  return {
+    borderRightColor,
+    borderRightWidth,
+    borderStyle
+  }
+}
+borderRight.parseArg = border.parseArg
+
+// borderBottom
+function borderBottom (...arg) {
+  // 最多只有三个参数
+  if (arg.length > 3) arg.length = 3
+  let borderBottomColor
+  let borderBottomWidth = 1
+  let borderStyle = 'solid'
+  arg.forEach(value => {
+    if (isColor(value)) {
+      borderBottomColor = value
+    } else if (typeof value === 'number') {
+      borderBottomWidth = value
+    } else if (isBorderStyle(value)) {
+      borderStyle = value
+    }
+  })
+  return {
+    borderBottomColor,
+    borderBottomWidth,
+    borderStyle
+  }
+}
+borderBottom.parseArg = border.parseArg
+
+// borderLeft
+function borderLeft (...arg) {
+  // 最多只有三个参数
+  if (arg.length > 3) arg.length = 3
+  let borderLeftColor
+  let borderLeftWidth = 1
+  let borderStyle = 'solid'
+  arg.forEach(value => {
+    if (isColor(value)) {
+      borderLeftColor = value
+    } else if (typeof value === 'number') {
+      borderLeftWidth = value
+    } else if (isBorderStyle(value)) {
+      borderStyle = value
+    }
+  })
+  return {
+    borderLeftColor,
+    borderLeftWidth,
+    borderStyle
+  }
+}
+borderLeft.parseArg = border.parseArg
+
+function isBorderStyle (style) {
+  switch (style) {
+    case 'solid':
+    case 'dotted':
+    case 'dashed':
+      return true
+    default:
+      return false
   }
 }
 
-export default storage
+// 处理阴影
+function shadow (...arg) {
+  let [offsetX, offsetY, radius, color] = [0, 0, 0, 'rgba(0, 0, 5, 0.5)']
+  switch (arg.length) {
+    case 2:
+      [offsetX, offsetY] = arg
+      break
+    case 3:
+      [offsetX, offsetY, color] = arg
+    case 4:
+    default:
+      [offsetX, offsetY, radius, color] = arg
+  }
+  return {
+    offset: {
+      height: offsetY,
+      width: offsetX
+    },
+    color,
+    radius
+  }
+}
+
+// 处理 boxShadow
+function boxShadow (...arg) {
+  const isNull = (
+    arg.length === 1 &&
+    arg[0] === null
+  )
+  const {
+    offset,
+    color,
+    radius
+  } = shadow(...arg)
+  return {
+    shadowOffset: offset,
+    shadowColor: color,
+    shadowRadius: radius,
+    shadowOpacity: isNull ? 0 : 1
+  }
+}
+boxShadow.parseArg = border.parseArg
+
+// 处理 textShadow
+function textShadow (...arg) {
+  const {
+    offset,
+    color,
+    radius
+  } = shadow(...arg)
+  return {
+    textShadowOffset: offset,
+    textShadowColor: color,
+    textShadowRadius: radius
+  }
+}
+textShadow.parseArg = border.parseArg
+
+// rgb转hex函数
+function rgb2Hex(red, green, blue) {
+  return `#${hex(red)}${hex(green)}${hex(blue)}`
+}
+
+// 将 hex 转成 [r, g, b]
+function getRGBFromHex (hex) {
+  hex = hex.replace('#', '')
+  const rgb = []
+  const count = hex.length
+  const step = count === 3 ? 1 : 2
+  for (let i = 0; i < count; i += step) {
+    const base16 = hex.substr(i, step)
+    const xhh = step === 2 ? base16 : `${base16}${base16}`
+    const base10 = Number(`0x${xhh}`).toString(10)
+    rgb.push(base10)
+  }
+  return rgb
+}
+
+// 将 hex 转成 [r, g, b, a]
+function getRGBAFromHex (hex) {
+  const count = hex.length
+  const step = count === 5 ? 1 : 2
+  const alphaHex = Number(`0x${hex.substr(count - step, step)}`)
+  const alpha = alphaHex / 255
+  const [
+    red,
+    green,
+    blue
+  ] = getRGBFromHex(hex.substr(0, count - step))
+  return [red, green, blue, alpha]
+}
+
+// 转16进制
+function hex (base10) {
+  const base16 = base10.toString(16)
+  const len = base16.length
+  if (len === 1) return `0${base16}`
+  return base16
+}
+
+// rgb 颜色函数
+function rgb (...arg) {
+  const count = arg.length
+  if (count === 1) {
+    if (isHexRGB(arg[0])) {
+      // 转入的是 hex 值
+      return rgba(arg[0], 1)
+    }
+    throw `argument error, please call it like: rgb('#rgb') or rgb('#rrggbb')`
+  } else if (count === 3) {
+    return rgba(...arg, 1)
+  }
+  // 异常
+  throw `function rgb expect 1 or 3 arguments, but ${count} argument(s) supply`
+}
+
+// rgba 颜色函数
+function rgba (...arg) {
+  const count = arg.length
+  if (count === 1) {
+    if (isHexRGBA(arg[0])) {
+      const [
+        red,
+        green,
+        blue,
+        alpha
+      ] = getRGBAFromHex(arg[0])
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+    }
+    throw `expect a parameter like #RRGGBBAA or #RGBA`
+  } else if (count === 2) {
+    const rgb = arg[0]
+    if (isHexRGB(rgb) && typeof arg[1] === 'number') {
+      const alpha = Math.min(arg[1], 1)
+      const [
+        red,
+        green,
+        blue
+      ] = getRGBFromHex(rgb)
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+    }
+    throw `arguments error, please call it like: rgba('#rgb', 0~1) or rgba('#rrggbb', 0~1)`
+  } else if (count === 4) {
+    if (
+      arg.every(item => typeof item === 'number')
+    ) {
+      const [
+        red,
+        green,
+        blue,
+        alpha
+      ] = arg
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`
+    }
+    throw `please make sure every argument is a number`
+  }
+  // 异常
+  throw `function rgba expect 1, 2 or 4 arguments, but ${count} argument(s) supply`
+}
+
+// 由 'rgb(#rgb)' 转换成 rgb('#rgb')
+function parseRGB (str) {
+  const hex = str.replace(/rgb\(|\)/g, '')
+  return rgb(hex)
+}
+
+// 由 'rgba(#rgb, a)' 转换成 rgba('#rgb', a)
+function parseRGBA (str) {
+  const [hex, opacity] = str.replace(/rgba\(|\)/g, '').split(/\,\s*/)
+  if (isHexRGBA(hex)) {
+    return rgba(hex)
+  }
+  return rgba(hex, Number(opacity) || 1)
+}
+
+// 判断是不是颜色值
+function isColor (color) {
+  if (
+    isHexRGB(color) ||
+    isHexRGBA(color) ||
+    color instanceof rgb ||
+    color instanceof rgba ||
+    isRGB(color) ||
+    isRGBA(color)
+  ) {
+    return true
+  }
+  return false
+}
+
+// 判断是不是 rgb 颜色
+function isRGB (color) {
+  return /rgb\(.+\)/i.test(color)
+}
+
+// 判断是不是 rgba 颜色
+function isRGBA (color) {
+  return /rgba\(.+\)/i.test(color)
+}
+
+// 判断是不是 hex(#rgb 或 #rrggbb) 类型颜色
+function isHexRGB (color) {
+  return /^#[0-9a-f]{3}$|^#[0-9a-f]{6}$/i.test(color)
+}
+
+// 判断是不是 hex(#rgba 或 #rrggbbaa) 类型颜色
+function isHexRGBA (color) {
+  return /^#[0-9a-f]{4}$|^#[0-9a-f]{8}$/i.test(color)
+}
+// 静态属性
+let staticProps = null
+// 挂载静态属性
+function mountStaticProps () {
+  // 设置状态栏高度
+  setStatusBarHeight()
+  const {
+    width,
+    height
+  } = Dimensions.get('window')
+  const {
+    width: screenWidth,
+    height: screenHeight
+  } = Dimensions.get('screen')
+  const {
+    hairlineWidth,
+    absoluteFill,
+    absoluteFillObject
+  } = StyleSheet
+  staticProps = {
+    isIPhoneX: isIPhoneX_deprecated,
+    hairlineWidth,
+    padding,
+    margin,
+    width,
+    height,
+    screenWidth,
+    screenHeight,
+    statusBarHeight,
+    absoluteFill: absoluteFill,
+    absoluteFillObject: absoluteFillObject,
+    orientation: getOrientation(),
+    boxShadow,
+    textShadow,
+    rgb,
+    rgba,
+    border,
+    borderWidth,
+    borderColor,
+    borderRadius,
+    borderTop,
+    borderRight,
+    borderBottom,
+    borderLeft,
+    nth
+  }
+  for (const key in staticProps) {
+    createStyle[key] = staticProps[key]
+  }
+}
+
+const getOrientation = () => {
+  const { width, height } = Dimensions.get('window');
+  return width > height ? LANDSCAPE : PORTRAIT;
+}
+
+// 队列
+const cssQueue = []
+
+export default function createStyle (styles) {
+  // 生成样式
+  const css = generateStyles({styles})
+  // 保存当前样式
+  cssQueue.push({ css })
+  return css
+}
+
+// 挂载静态属性
+mountStaticProps()
+
+Dimensions.addEventListener('change', function () {
+  // 重新生成样式
+  cssQueue.forEach(
+    css => generateStyles({
+      css, styles: css.rawStyles
+    })
+  )
+  // 更新静态属性
+  mountStaticProps()
+  // 重置 nth-child
+  nth.map = []
+  nth.cache = {}
+  nth.count = 0
+})
