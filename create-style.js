@@ -162,7 +162,7 @@ function createStyleNames (nthList, css) {
 }
 
 // 生成一个不会重复的 key 值
-function genKey () {
+export function genKey () {
   return `${Date.now()}-${genKey.count++}`
 }
 
@@ -270,7 +270,7 @@ function createLayoutManager (css) {
         }
       })
     }
-    currentLayout = layoutStyle
+    currentLayout = layoutStyle || {}
   }
   const styleNames = (...arg) => currentLayout.styleNames(...arg)
   return {
@@ -376,6 +376,10 @@ function generateStyles ({ css = {}, styles }) {
     styleSnap[layout] = generateStyle(snap)
     return styleSnap[layout]
   })
+  if (!styleSnap.common) {
+    // 生成一个默认的 common 对象
+    styleSnap.common = {}
+  }
   // 继承
   styles.forEach(style => {
     const { layout = 'common' } = style
@@ -1036,11 +1040,6 @@ function mountStaticProps () {
   for (const key in staticProps) {
     createStyle[key] = staticProps[key]
   }
-}
-
-const getOrientation = () => {
-  const { width, height } = Dimensions.get('window');
-  return width > height ? LANDSCAPE : PORTRAIT;
 }
 
 // 队列
