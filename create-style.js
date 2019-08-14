@@ -15,12 +15,23 @@ import transform from './transform'
 
 const LANDSCAPE = 'landscape'
 const PORTRAIT = 'portrait'
-const { isIPhoneX_deprecated } = DeviceInfo
+const isIPhoneX = (() => {
+  if (Platform.OS !== 'ios') return false
+  const { width, height } = Dimensions.get('screen')
+  if (width === 375 && height === 812) {
+    // iPhoneX / iPhoneXs
+    return true
+  }
+  if (width === 414 && height === 896) {
+    // iPhone Xs Max / iPhone Xr
+    return true
+  }
+})()
 // 状态栏高度
 let statusBarHeight = StatusBar.currentHeight
 const setStatusBarHeight = () => {
   if (Platform.OS === 'ios') {
-    if (isIPhoneX_deprecated && getOrientation() === PORTRAIT) {
+    if (isIPhoneX && getOrientation() === PORTRAIT) {
       // iPhoneX
       statusBarHeight = 44
     } else {
@@ -367,7 +378,11 @@ function generateStyles ({ css = {}, styles }) {
   }
   // 快照
   const styleSnap = {}
-  styles.forEach(style => {
+  styles.forEach((style, index) => {
+    if (!style) { // 保证 undefined 正常运行
+      style = {}
+      styles[index] = style
+    }
     const { layout = 'common' } = style
     const snap = { ...style }
     // 删除 layout & @extendLayouts
@@ -1011,7 +1026,7 @@ function mountStaticProps () {
     absoluteFillObject
   } = StyleSheet
   staticProps = {
-    isIPhoneX: isIPhoneX_deprecated,
+    isIPhoneX,
     hairlineWidth,
     padding,
     margin,
